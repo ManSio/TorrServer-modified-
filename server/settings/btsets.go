@@ -43,6 +43,13 @@ type BTSets struct {
 	UseDisk           bool
 	TorrentsSavePath  string
 	RemoveCacheOnDrop bool
+	// OneCacheForAll makes CacheSize a budget for the whole cache directory
+	// instead of a per-torrent capacity. Default false = unchanged behaviour
+	// (each torrent may use up to CacheSize on its own).
+	//
+	// Note: PR #637 introduces a field with the same name and intent; the two
+	// implementations differ (that one only sees caches that are loaded).
+	OneCacheForAll bool
 
 	// Torrent
 	ForceEncrypt             bool

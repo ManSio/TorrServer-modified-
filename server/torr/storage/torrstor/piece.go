@@ -74,8 +74,11 @@ func (p *Piece) Release() {
 	} else {
 		p.dPiece.Release()
 	}
-	// if !p.cache.isClosed {
-	p.cache.torrent.Piece(p.Id).SetPriority(torrent.PiecePriorityNone)
-	p.cache.torrent.Piece(p.Id).UpdateCompletion()
-	//}
+	// The torrent is nil during init/teardown — releasing a piece then must
+	// not panic. Eviction makes this reachable in normal operation: a cache
+	// can be closed (and its pieces released) before SetTorrent ran.
+	if p.cache != nil && p.cache.torrent != nil {
+		p.cache.torrent.Piece(p.Id).SetPriority(torrent.PiecePriorityNone)
+		p.cache.torrent.Piece(p.Id).UpdateCompletion()
+	}
 }

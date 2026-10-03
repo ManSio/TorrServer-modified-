@@ -148,6 +148,12 @@ func (c *Cache) Close() error {
 	}
 	c.isClosed.Store(true)
 
+	// Hand this cache's bytes over to the budget BEFORE the cache leaves
+	// s.caches. Without this the bytes stop being counted anywhere while the
+	// files stay on disk (RemoveCacheOnDrop=false), and the cache limit
+	// silently stops applying to them.
+	c.releaseOnClose()
+
 	c.storage.removeCache(c.hash)
 
 	if settings.BTsets.RemoveCacheOnDrop {
@@ -172,6 +178,38 @@ func (c *Cache) Close() error {
 
 	utils.FreeOSMemGC()
 	return nil
+}
+
+// releaseOnClose keeps the global budget honest when a cache goes away.
+//
+// RemoveCacheOnDrop=true: the files are deleted right below, so the bytes leave
+// the in-memory counter for good.
+//
+// RemoveCacheOnDrop=false: the files stay on disk with no cache in memory, so
+// the bytes are TRANSFERRED to orphanBytes — the sum the limit is checked
+// against must not change when a torrent is dropped. This is also registered as
+// an eviction candidate immediately, with newest = now so it has to sit out the
+// 5-minute guard before it can be deleted.
+func (c *Cache) releaseOnClose() {
+	if c.storage == nil || !c.storage.budgetEnabled() {
+		return
+	}
+	var left int64
+	for _, p := range c.getPieces() {
+		left += p.Size
+	}
+	if left <= 0 {
+		return
+	}
+	c.storage.addFilledSize(-left)
+	if diskMode() && !settings.BTsets.RemoveCacheOnDrop {
+		c.storage.addOrphanBytes(left)
+		c.storage.addOrphanDir(orphanDir{
+			hash:   c.hash.HexString(),
+			size:   left,
+			newest: time.Now().Unix(),
+		})
+	}
 }
 
 func (c *Cache) removePiece(piece *Piece) {

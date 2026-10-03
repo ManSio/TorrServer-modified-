@@ -27,6 +27,8 @@ func NewDiskPiece(p *Piece) *DiskPiece {
 		p.Size = ff.Size()
 		p.Complete = ff.Size() == p.cache.pieceLength
 		p.Accessed = ff.ModTime().Unix()
+		// Bytes already on disk are cache data the budget must know about.
+		p.cache.storage.addFilledSize(p.Size)
 	}
 	return &DiskPiece{piece: p, name: name}
 }
@@ -45,9 +47,20 @@ func (p *DiskPiece) WriteAt(b []byte, off int64) (n int, err error) {
 
 	p.piece.Size += int64(n)
 	if p.piece.Size > p.piece.cache.pieceLength {
+		// Clamp the counter together with the piece: without this a re-write of
+		// a partial piece keeps adding bytes that were already counted.
+		delta := p.piece.Size - p.piece.cache.pieceLength
+		p.piece.cache.storage.addFilledSize(-delta)
 		p.piece.Size = p.piece.cache.pieceLength
 	}
+	p.piece.cache.storage.addFilledSize(int64(n))
 	p.piece.Accessed = time.Now().Unix()
+
+	// Hot path: never clean synchronously (it sorts and deletes under locks) —
+	// just signal the background worker.
+	if p.piece.cache.storage.getFilledSize() > p.piece.cache.storage.capacity {
+		p.piece.cache.storage.requestCleanup()
+	}
 	return
 }
 
@@ -78,6 +91,9 @@ func (p *DiskPiece) Release() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	if p.piece.Size > 0 {
+		p.piece.cache.storage.addFilledSize(-p.piece.Size)
+	}
 	p.piece.Size = 0
 	p.piece.Complete = false
 

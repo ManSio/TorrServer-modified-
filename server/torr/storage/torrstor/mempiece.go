@@ -24,6 +24,9 @@ func (p *MemPiece) WriteAt(b []byte, off int64) (n int, err error) {
 	if p.buffer == nil {
 		go p.piece.cache.cleanPieces()
 		p.buffer = make([]byte, p.piece.cache.pieceLength, p.piece.cache.pieceLength)
+		// The buffer is the cache data in RAM mode: account it once, when it
+		// is allocated.
+		p.piece.cache.storage.addFilledSize(int64(len(p.buffer)))
 	}
 	n = copy(p.buffer[off:], b[:])
 	p.piece.Size += int64(n)
@@ -63,6 +66,7 @@ func (p *MemPiece) Release() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.buffer != nil {
+		p.piece.cache.storage.addFilledSize(-int64(len(p.buffer)))
 		p.buffer = nil
 	}
 	p.piece.Size = 0
