@@ -8,7 +8,6 @@ import (
 	"github.com/anacrolix/torrent"
 
 	"server/log"
-	"server/settings"
 )
 
 type Reader struct {
@@ -145,15 +144,24 @@ func (r *Reader) getPieceNum(offset int64) int {
 	return int((offset + r.file.Offset()) / r.cache.pieceLength)
 }
 
+// getOffsetRange is the window of the file a reader needs, and therefore the
+// window that eviction must not touch (getRemPieces/cleanPieces and the global
+// budget both use it).
+//
+// It used to be cache.capacity * ReaderReadAHead%, i.e. a percentage of the
+// cache size. With a 91 GiB cache and ReadAhead=81% a single player protected
+// ~74 GiB — more than the whole limit — so eviction could never bring the cache
+// back down while anything was playing.
+//
+// The meaningful scale is what this reader actually asked for: its readahead
+// window, plus one piece of margin on each side for the piece being served and
+// the one after it.
 func (r *Reader) getOffsetRange() (int64, int64) {
-	prc := int64(settings.BTsets.ReaderReadAHead)
-	readers := int64(r.getUseReaders())
-	if readers == 0 {
-		readers = 1
-	}
+	back := r.cache.pieceLength
+	fwd := r.readahead + r.cache.pieceLength
 
-	beginOffset := r.offset - (r.cache.capacity/readers)*(100-prc)/100
-	endOffset := r.offset + (r.cache.capacity/readers)*prc/100
+	beginOffset := r.offset - back
+	endOffset := r.offset + fwd
 
 	if beginOffset < 0 {
 		beginOffset = 0
