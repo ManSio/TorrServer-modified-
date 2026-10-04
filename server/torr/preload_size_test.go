@@ -43,7 +43,9 @@ func TestPreloadSizeCappedByCache(t *testing.T) {
 		CacheSize:      64 * 1024 * 1024, // 64MB
 		PreloadCacheMB: 1024,             // 1GB > cache
 	}
-	defer func() { sets.BTsets = nil }()
+	// Не возвращаем sets.BTsets в nil: горутина cleanupLoop, которую поднимает
+	// NewStorage в других тестах этого пакета, переживает их и читает глобал —
+	// обнуление в defer давало ложное срабатывание -race.
 
 	if got := preloadSize(); got != 64*1024*1024 {
 		t.Fatalf("cap: expected 64MB, got %d", got)
