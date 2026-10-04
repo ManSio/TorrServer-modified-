@@ -321,14 +321,16 @@ func humanBytes(n int64) string {
 	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
+// bts.client and bts.storage are both replaced by Connect() under bt.mu, and
+// WriteCacheStatus used to read bts.storage outside the lock, which the race
+// detector flagged (write at btserver.go:98 vs read here). Readers therefore
+// enter bt.mu for the whole call: that also keeps Disconnect() from closing the
+// client underneath us, and a nil client is reported instead of dereferenced.
 func WriteStatus(w io.Writer) {
-	bts.WriteCacheStatus(w)
-	// bts.client is set to nil by Disconnect() while a reconnect is in progress.
-	// Reading it without holding bt.mu races with that write and panics inside the
-	// torrent library. The lock is held across the call so the client cannot be
-	// Closed() underneath us, and the nil case is reported instead of dereferenced.
 	bts.mu.RLock()
 	defer bts.mu.RUnlock()
+
+	bts.WriteCacheStatus(w)
 	if bts.client == nil {
 		_, _ = fmt.Fprintf(w, "Torrent client is not connected\n")
 		return

@@ -128,9 +128,18 @@ func (t *Torrent) WaitInfo() bool {
 
 	select {
 	case <-t.Torrent.GotInfo():
-		if t.bt != nil && t.bt.storage != nil {
-			t.cache = t.bt.storage.GetCache(t.Hash())
-			t.cache.SetTorrent(t.Torrent)
+		// bt.storage is replaced by Connect() under bt.mu; read it under the lock
+		// and use the snapshot afterwards, because the storage object keeps its own
+		// locking and is never closed. Reading the field unlocked was flagged by the
+		// race detector and can hand SetTorrent a torn interface value.
+		if t.bt != nil {
+			t.bt.mu.RLock()
+			storage := t.bt.storage
+			t.bt.mu.RUnlock()
+			if storage != nil {
+				t.cache = storage.GetCache(t.Hash())
+				t.cache.SetTorrent(t.Torrent)
+			}
 		}
 		return true
 	case <-t.closed:
