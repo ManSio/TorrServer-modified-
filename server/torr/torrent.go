@@ -77,7 +77,16 @@ func NewTorrent(spec *torrent.TorrentSpec, bt *BTServer) (*Torrent, error) {
 		spec.Trackers = append(spec.Trackers, [][]string{trackers}...)
 	}
 
+	// The read lock is taken and released here explicitly, NOT with defer: the code
+	// below takes bt.mu.Lock() for the torrents map, and holding an RLock across
+	// that would self-deadlock (sync.RWMutex is not reentrant).
+	bt.mu.RLock()
+	if bt.client == nil {
+		bt.mu.RUnlock()
+		return nil, errors.New("BT client not connected")
+	}
 	goTorrent, _, err := bt.client.AddTorrentSpec(spec)
+	bt.mu.RUnlock()
 	if err != nil {
 		return nil, err
 	}

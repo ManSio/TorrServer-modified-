@@ -323,6 +323,16 @@ func humanBytes(n int64) string {
 
 func WriteStatus(w io.Writer) {
 	bts.WriteCacheStatus(w)
+	// bts.client is set to nil by Disconnect() while a reconnect is in progress.
+	// Reading it without holding bt.mu races with that write and panics inside the
+	// torrent library. The lock is held across the call so the client cannot be
+	// Closed() underneath us, and the nil case is reported instead of dereferenced.
+	bts.mu.RLock()
+	defer bts.mu.RUnlock()
+	if bts.client == nil {
+		_, _ = fmt.Fprintf(w, "Torrent client is not connected\n")
+		return
+	}
 	bts.client.WriteStatus(w)
 }
 
