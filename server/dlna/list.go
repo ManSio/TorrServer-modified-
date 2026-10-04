@@ -1,0 +1,452 @@
+package dlna
+
+import (
+	"fmt"
+	"net/url"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/anacrolix/dms/dlna"
+	"github.com/anacrolix/dms/upnpav"
+
+	"server/log"
+	mt "server/mimetype"
+	"server/settings"
+	"server/torr"
+	"server/torr/state"
+)
+
+func getRoot() (ret []interface{}) {
+	// Torrents Object (ROOT)
+	tObj := upnpav.Object{
+		ID:         "%2FTR",
+		ParentID:   "0",
+		Restricted: 1,
+		Title:      "Torrents",
+		Class:      "object.container.storageFolder",
+		Date:       upnpav.Timestamp{Time: time.Now()},
+	}
+
+	// add Torrents Object
+	vol := len(torr.ListTorrent())
+	cnt := upnpav.Container{Object: tObj, ChildCount: vol}
+	ret = append(ret, cnt)
+
+	return
+}
+
+func normalizeCategory(c string) string {
+	c = strings.TrimSpace(strings.ToLower(c))
+	if c == "" {
+		return "uncategorized"
+	}
+	return c
+}
+
+func categoryTitle(c string) string {
+	switch c {
+	case "movie":
+		return "Movies"
+	case "tv":
+		return "TV Shows"
+	case "music":
+		return "Music"
+	case "other":
+		return "Other"
+	case "uncategorized":
+		return "Uncategorized"
+	default:
+		return c
+	}
+}
+
+func getTorrentCategories() (ret []interface{}) {
+	torrs := torr.ListTorrent()
+
+	catCounts := make(map[string]int)
+	for _, t := range torrs {
+		cat := normalizeCategory(t.Category)
+		catCounts[cat]++
+	}
+
+	known := []string{"movie", "tv", "music", "other", "uncategorized"}
+	seen := make(map[string]struct{})
+	order := make([]string, 0, len(catCounts))
+
+	for _, k := range known {
+		if _, ok := catCounts[k]; ok {
+			order = append(order, k)
+			seen[k] = struct{}{}
+		}
+	}
+
+	var rest []string
+	for c := range catCounts {
+		if _, ok := seen[c]; ok {
+			continue
+		}
+		rest = append(rest, c)
+	}
+	sort.Strings(rest)
+	order = append(order, rest...)
+
+	if len(order) == 0 {
+		obj := upnpav.Object{
+			ID:         "%2FNT",
+			ParentID:   "%2FTR",
+			Restricted: 1,
+			Title:      "No Torrents",
+			Class:      "object.container.storageFolder",
+			Date:       upnpav.Timestamp{Time: time.Now()},
+		}
+		cnt := upnpav.Container{Object: obj, ChildCount: 0}
+		ret = append(ret, cnt)
+		return
+	}
+
+	for _, cat := range order {
+		title := categoryTitle(cat)
+		id := url.PathEscape("/TR/" + cat)
+
+		obj := upnpav.Object{
+			ID:         id,
+			ParentID:   "%2FTR",
+			Restricted: 1,
+			Title:      title,
+			Class:      "object.container.storageFolder",
+			Date:       upnpav.Timestamp{Time: time.Now()},
+		}
+		cnt := upnpav.Container{Object: obj, ChildCount: catCounts[cat]}
+		ret = append(ret, cnt)
+	}
+
+	return
+}
+
+func getTorrentsByCategory(path string) (ret []interface{}) {
+	cat := strings.TrimPrefix(path, "/TR/")
+	cat, _ = url.PathUnescape(cat)
+	cat = normalizeCategory(cat)
+
+	parentID := url.PathEscape("/TR/" + cat)
+
+	torrs := torr.ListTorrent()
+	filtered := make([]*torr.Torrent, 0, len(torrs))
+	for _, t := range torrs {
+		if normalizeCategory(t.Category) == cat {
+			filtered = append(filtered, t)
+		}
+	}
+
+	sort.Slice(filtered, func(i, j int) bool {
+		return filtered[i].Title < filtered[j].Title
+	})
+
+	if len(filtered) == 0 {
+		obj := upnpav.Object{
+			ID:         "%2FNT",
+			ParentID:   parentID,
+			Restricted: 1,
+			Title:      "Empty",
+			Class:      "object.container.storageFolder",
+			Date:       upnpav.Timestamp{Time: time.Now()},
+		}
+		cnt := upnpav.Container{Object: obj, ChildCount: 0}
+		ret = append(ret, cnt)
+		return
+	}
+
+	for _, t := range filtered {
+		obj := upnpav.Object{
+			ID:          "%2F" + t.TorrentSpec.InfoHash.HexString(),
+			ParentID:    parentID,
+			Restricted:  1,
+			Title:       strings.ReplaceAll(t.Title, "/", "|"),
+			Class:       "object.container.storageFolder",
+			Icon:        t.Poster,
+			AlbumArtURI: t.Poster,
+			Date:        upnpav.Timestamp{Time: time.Unix(t.Timestamp, 0)},
+		}
+		cnt := upnpav.Container{Object: obj, ChildCount: 1}
+		ret = append(ret, cnt)
+	}
+	return
+}
+
+func getTorrents() (ret []interface{}) {
+	torrs := torr.ListTorrent()
+	// sort by title as in cds SortCaps
+	sort.Slice(torrs, func(i, j int) bool {
+		return torrs[i].Title < torrs[j].Title
+	})
+
+	vol := 0
+	for _, t := range torrs {
+		vol++
+		obj := upnpav.Object{
+			ID:          "%2F" + t.TorrentSpec.InfoHash.HexString(),
+			ParentID:    "%2FTR",
+			Restricted:  1,
+			Title:       strings.ReplaceAll(t.Title, "/", "|"),
+			Class:       "object.container.storageFolder",
+			Icon:        t.Poster,
+			AlbumArtURI: t.Poster,
+			Date:        upnpav.Timestamp{Time: time.Unix(t.Timestamp, 0)}, // time.Now()
+		}
+		cnt := upnpav.Container{Object: obj, ChildCount: 1}
+		ret = append(ret, cnt)
+	}
+	if vol == 0 {
+		obj := upnpav.Object{
+			ID:         "%2FNT",
+			ParentID:   "%2FTR",
+			Restricted: 1,
+			Title:      "No Torrents",
+			Class:      "object.container.storageFolder",
+			Date:       upnpav.Timestamp{Time: time.Now()},
+		}
+		cnt := upnpav.Container{Object: obj, ChildCount: 0}
+		ret = append(ret, cnt)
+	}
+	return
+}
+
+func getTorrent(path, host string) (ret []interface{}) {
+	// find torrent without load
+	torrs := torr.ListTorrent()
+	var torr *torr.Torrent
+	for _, t := range torrs {
+		if strings.Contains(path, t.TorrentSpec.InfoHash.HexString()) {
+			torr = t
+			break
+		}
+	}
+	if torr == nil {
+		return nil
+	}
+
+	// get content from torrent
+	parent := "%2F" + torr.TorrentSpec.InfoHash.HexString()
+	// if torrent not loaded, get button for load
+	if torr.Files() == nil {
+		obj := upnpav.Object{
+			ID:         parent + "%2FLD",
+			ParentID:   parent,
+			Restricted: 1,
+			Title:      "Load Torrent",
+			Class:      "object.container.storageFolder",
+			Date:       upnpav.Timestamp{Time: time.Now()},
+		}
+		cnt := upnpav.Container{Object: obj, ChildCount: 1}
+		ret = append(ret, cnt)
+		return
+	}
+
+	ret = loadTorrent(path, host)
+	return
+}
+
+func getTorrentMeta(path, host string) (ret interface{}) {
+	// Meta object
+	if path == "/" {
+		// root object meta
+		rootObj := upnpav.Object{
+			ID:         "0",
+			ParentID:   "-1",
+			Restricted: 1,
+			Searchable: 1,
+			Title:      "TorrServer",
+			Date:       upnpav.Timestamp{Time: time.Now()},
+			Class:      "object.container.storageFolder",
+		}
+		meta := upnpav.Container{Object: rootObj, ChildCount: 1}
+		return meta
+	} else if strings.HasPrefix(path, "/TR/") {
+		cat := strings.TrimPrefix(path, "/TR/")
+		cat, _ = url.PathUnescape(cat)
+		cat = normalizeCategory(cat)
+
+		vol := 0
+		for _, t := range torr.ListTorrent() {
+			if normalizeCategory(t.Category) == cat {
+				vol++
+			}
+		}
+
+		obj := upnpav.Object{
+			ID:         url.PathEscape(path),
+			ParentID:   "%2FTR",
+			Restricted: 1,
+			Searchable: 1,
+			Title:      categoryTitle(cat),
+			Date:       upnpav.Timestamp{Time: time.Now()},
+			Class:      "object.container.storageFolder",
+		}
+		meta := upnpav.Container{Object: obj, ChildCount: vol}
+		return meta
+	} else if filepath.Base(path) == "TR" {
+		// TR Object Meta
+		trObj := upnpav.Object{
+			ID:         "%2FTR",
+			ParentID:   "0",
+			Restricted: 1,
+			Searchable: 1,
+			Title:      "Torrents",
+			Date:       upnpav.Timestamp{Time: time.Now()},
+			Class:      "object.container.storageFolder",
+		}
+		torrs := torr.ListTorrent()
+		vol := len(torrs)
+		meta := upnpav.Container{Object: trObj, ChildCount: vol}
+		return meta
+	} else if isHashPath(path) {
+		// find torrent without load
+		torrs := torr.ListTorrent()
+		var torr *torr.Torrent
+		for _, t := range torrs {
+			if strings.Contains(path, t.TorrentSpec.InfoHash.HexString()) {
+				torr = t
+				break
+			}
+		}
+		if torr == nil {
+			return nil
+		}
+		// hash object meta
+		obj := upnpav.Object{
+			ID:         "%2F" + torr.TorrentSpec.InfoHash.HexString(),
+			ParentID:   "%2FTR",
+			Restricted: 1,
+			Title:      torr.Title,
+			Date:       upnpav.Timestamp{Time: time.Unix(torr.Timestamp, 0)}, // time.Now()
+		}
+		meta := upnpav.Container{Object: obj, ChildCount: 1}
+		return meta
+	} else if filepath.Base(path) == "LD" {
+		parent := url.PathEscape(filepath.Dir(path))
+		// LD object meta
+		obj := upnpav.Object{
+			ID:         parent + "%2FLD",
+			ParentID:   parent,
+			Restricted: 1,
+			Searchable: 1,
+			Title:      "Load Torrents",
+			Date:       upnpav.Timestamp{Time: time.Now()},
+		}
+		meta := upnpav.Container{Object: obj, ChildCount: 1}
+		return meta
+	} else {
+		file := filepath.Base(path)
+		id := url.PathEscape(path)
+		parent := url.PathEscape(filepath.Dir(path))
+		// file object meta
+		obj := upnpav.Object{
+			ID:         id,
+			ParentID:   parent,
+			Restricted: 1,
+			Searchable: 1,
+			Title:      file,
+			Date:       upnpav.Timestamp{Time: time.Now()},
+		}
+		meta := upnpav.Container{Object: obj, ChildCount: 1}
+		return meta
+	}
+}
+
+func loadTorrent(path, host string) (ret []interface{}) {
+	hash := filepath.Base(filepath.Dir(path))
+	if hash == "/" || hash == "\\" {
+		hash = filepath.Base(path)
+	}
+	if len(hash) != 40 {
+		return
+	}
+
+	tor := torr.GetTorrent(hash)
+	if tor == nil {
+		log.TLogln("Dlna error get info from torrent", hash)
+		return
+	}
+	if len(tor.Files()) == 0 {
+		time.Sleep(time.Millisecond * 200)
+		timeout := time.Now().Add(time.Second * 60)
+		for {
+			tor = torr.GetTorrent(hash)
+			if len(tor.Files()) > 0 {
+				break
+			}
+			time.Sleep(time.Millisecond * 200)
+			if time.Now().After(timeout) {
+				return
+			}
+		}
+	}
+	parent := "%2F" + tor.TorrentSpec.InfoHash.HexString()
+	files := tor.Status().FileStats
+	for _, f := range files {
+		obj := getObjFromTorrent(path, parent, host, tor, f)
+		if obj != nil {
+			ret = append(ret, obj)
+		}
+	}
+	return
+}
+
+func getLink(host, path string) string {
+	if !strings.HasPrefix(host, "http") {
+		host = "http://" + host
+	}
+	pos := strings.LastIndex(host, ":")
+	if pos > 7 {
+		host = host[:pos]
+	}
+	return host + ":" + settings.Port + "/" + path
+}
+
+func getObjFromTorrent(path, parent, host string, torr *torr.Torrent, file *state.TorrentFileStat) (ret interface{}) {
+	mime, err := mt.MimeTypeByPath(file.Path)
+	if err != nil {
+		if settings.BTsets.EnableDebug {
+			log.TLogln("Can't detect mime type", err)
+		}
+		return
+	}
+	// TODO: handle subtitles for media
+	if !mime.IsMedia() {
+		return
+	}
+	if settings.BTsets.EnableDebug {
+		log.TLogln("mime type", mime.String(), file.Path)
+	}
+
+	// Only the subfolders will be displayed
+	fileName := strings.TrimPrefix(filepath.ToSlash(file.Path), filepath.Base(torr.Name())+"/")
+
+	obj := upnpav.Object{
+		ID:         parent + "%2F" + url.PathEscape(file.Path),
+		ParentID:   parent,
+		Restricted: 1,
+		Title:      fileName,
+		Class:      "object.item." + mime.Type() + "Item",
+		Date:       upnpav.Timestamp{Time: time.Now()},
+	}
+
+	item := upnpav.Item{
+		Object: obj,
+		Res:    make([]upnpav.Resource, 0, 1),
+	}
+	// pathPlay := "stream/" + url.PathEscape(file.Path) + "?link=" + torr.TorrentSpec.InfoHash.HexString() + "&play&index=" + strconv.Itoa(file.Id)
+	pathPlay := "play/" + torr.TorrentSpec.InfoHash.HexString() + "/" + strconv.Itoa(file.Id)
+	item.Res = append(item.Res, upnpav.Resource{
+		URL: getLink(host, pathPlay),
+		ProtocolInfo: fmt.Sprintf("http-get:*:%s:%s", mime, dlna.ContentFeatures{
+			SupportRange:    true,
+			SupportTimeSeek: true,
+		}.String()),
+		Size: uint64(file.Length),
+	})
+	return item
+}
