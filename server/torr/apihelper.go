@@ -18,7 +18,14 @@ import (
 
 var bts *BTServer
 
+// bts is read by request handlers without any synchronisation of their own, so it
+// must be written exactly once. Connect() calls this on every settings save with
+// the same receiver, and the repeated assignment was reported by -race as a data
+// race against every /stat request (43 of 44 reports in one run).
 func InitApiHelper(bt *BTServer) {
+	if bts == bt {
+		return
+	}
 	bts = bt
 }
 
