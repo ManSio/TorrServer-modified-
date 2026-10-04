@@ -58,14 +58,7 @@ func TestConcurrentDisconnectAndWriteStatus(t *testing.T) {
 	// main() при старте, поэтому тест обязан их выставить, иначе Connect() падает
 	// в nil — это дефект окружения теста, а не проверяемый баг. Так же поступает
 	// rutor/race_test.go.
-	if settings.BTsets == nil {
-		settings.BTsets = &settings.BTSets{}
-		defer func() { settings.BTsets = nil }()
-	}
-	if settings.Args == nil {
-		settings.Args = &settings.ExecArgs{}
-		defer func() { settings.Args = nil }()
-	}
+	initTestGlobals(t)
 
 	bt := NewBTS()
 	InitApiHelper(bt)
@@ -110,15 +103,17 @@ func TestConcurrentDisconnectAndWriteStatus(t *testing.T) {
 // configure() читает settings.BTsets (btserver.go:90), configureProxy() —
 // settings.Args (btserver.go:202). Без них Connect() падает в nil, и это дефект
 // окружения теста, а не проверяемый баг. Так же поступает rutor/race_test.go.
+//
+// Глобалы НЕ возвращаются в nil после теста: горутины torrent-клиента переживают
+// Disconnect(), и обнуление settings.BTsets в defer давало ложное срабатывание
+// -race. Для остальных тестов пакета оставленные глобалы безвредны.
 func initTestGlobals(t *testing.T) {
 	t.Helper()
 	if settings.BTsets == nil {
 		settings.BTsets = &settings.BTSets{}
-		t.Cleanup(func() { settings.BTsets = nil })
 	}
 	if settings.Args == nil {
 		settings.Args = &settings.ExecArgs{}
-		t.Cleanup(func() { settings.Args = nil })
 	}
 }
 
