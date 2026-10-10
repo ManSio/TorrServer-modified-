@@ -7,6 +7,7 @@ import (
 	"math"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"server/log"
 )
@@ -34,7 +35,34 @@ const (
 	// защищённым после последнего чтения (пауза, буферизация, фон).
 	ViewerIdleGraceDefault = 1800
 	ViewerIdleGraceMin     = 60
+
+	// DefaultCacheStateTTLSec — 1 секунда. Меньше смысла нет: за это время
+	// состояние кэша уже изменилось. Больше — UI заметно отстаёт.
+	DefaultCacheStateTTLSec = 1
+	// CacheStateTTLMaxSec — верхняя граница, чтобы опечатка в настройках не
+	// превратила прогресс-бар в замороженный.
+	CacheStateTTLMaxSec = 60
 )
+
+// CacheStateTTLDuration resolves BTSets.CacheStateTTL against the rules
+// documented on the field: 0 = default, negative = disabled.
+//
+// It is a method on the struct rather than code at the call site so that the
+// clamping exists exactly once — SetBTSets, loadBTSets and the readers all
+// disagree about which values are legal otherwise.
+func (v *BTSets) CacheStateTTLDuration() time.Duration {
+	if v == nil || v.CacheStateTTL < 0 {
+		return 0
+	}
+	ttl := v.CacheStateTTL
+	if ttl == 0 {
+		ttl = DefaultCacheStateTTLSec
+	}
+	if ttl > CacheStateTTLMaxSec {
+		ttl = CacheStateTTLMaxSec
+	}
+	return time.Duration(ttl) * time.Second
+}
 
 type BTSets struct {
 	// Cache
@@ -66,6 +94,21 @@ type BTSets struct {
 	// a forgotten player still frees its memory eventually. Seconds, 0 = use
 	// ViewerIdleGraceDefault.
 	ViewerIdleGraceSec int `json:"ViewerIdleGraceSec"`
+
+	// CacheStateTTL is how long a computed `CacheState` may be reused for the
+	// next identical request instead of being rebuilt from scratch, in seconds.
+	// 0 = use DefaultCacheStateTTLSec, negative = disable (rebuild every time,
+	// the behaviour before this setting existed).
+	//
+	// It exists because players poll `/cache` (and `/stream?...&stat`) far more
+	// often than the state can change: measured on a 2-core box, 555 of the
+	// last 600 requests in access.log were `/cache` from two clients, and each
+	// one rebuilt the whole thing — a walk over every piece of a 28 GB torrent,
+	// `PieceState()` under the client lock per piece, a zlib re-pack of the
+	// torrs hash and a full re-serialisation of the result. That was 57% of
+	// the process CPU. Reusing the snapshot for a second costs the UI a second
+	// of freshness and nothing else.
+	CacheStateTTL int `json:"CacheStateTTL"`
 
 	// Disk
 	UseDisk           bool
@@ -199,10 +242,16 @@ func SetBTSets(sets *BTSets) {
 		sets.CacheHysteresis = 0.90 // Reset to default
 	}
 
+	// Clamp here too, not only in CacheStateTTLDuration: the value is written
+	// back to the DB immediately below, so an out-of-range one would persist
+	// and outlive this run.
+	if sets.CacheStateTTL > CacheStateTTLMaxSec {
+		sets.CacheStateTTL = CacheStateTTLMaxSec
+	}
+
 	if sets.TorrentsSavePath == "" {
 		sets.UseDisk = false
-	} else if sets.UseDisk {
-		BTsets = sets
+	} else if sets.UseDisk {		BTsets = sets
 
 		go filepath.WalkDir(sets.TorrentsSavePath, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -235,6 +284,7 @@ func SetDefaultConfig() {
 	sets.PreloadCache = 50.0          // 50% default
 	sets.OneCacheForAll = false       // Per-torrent by default (backward compatible)
 	sets.CacheHysteresis = 0.90       // Clean to 90% of capacity
+	sets.CacheStateTTL = DefaultCacheStateTTLSec
 	sets.ConnectionsLimit = 25
 	sets.RetrackersMode = 1
 	sets.TrackersListURL = DefaultTrackersListURL
@@ -279,6 +329,12 @@ func loadBTSets() {
 			}
 			if BTsets.ViewerIdleGraceSec < ViewerIdleGraceMin {
 				BTsets.ViewerIdleGraceSec = ViewerIdleGraceDefault
+			}
+			// Same clamp as SetBTSets. Configs written before the field existed
+			// deserialise to 0, which CacheStateTTLDuration() reads as the
+			// default — only genuinely oversized values need fixing here.
+			if BTsets.CacheStateTTL > CacheStateTTLMaxSec {
+				BTsets.CacheStateTTL = CacheStateTTLMaxSec
 			}
 			// Set default TMDB settings if missing (for existing configs)
 			if BTsets.TMDBSettings.APIURL == "" {

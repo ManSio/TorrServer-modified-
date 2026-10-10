@@ -160,10 +160,45 @@ func (c *Cache) priorityWatchdog() {
 				continue
 			}
 			if c.GetUseReaders() > 0 {
-				c.getRemPieces()
+				c.rearmPriorities()
 			}
 		}
 	}
+}
+
+// rearmPriorities restores the piece priorities of active readers without
+// doing any of the rest of getRemPieces.
+//
+// The watchdog's whole job is to break the deadlock described on it: priorities
+// are cleared somewhere, nothing downloads, so the piece I/O that normally
+// triggers getRemPieces never happens. For that it needs exactly the two
+// priority calls getRemPieces makes — clearPriority() then setLoadPriority()
+// (the old full call did those too, so the sequence is preserved, not invented:
+// skipping the clear leaves stale priorities on pieces past the window and the
+// client keeps downloading outside it).
+//
+// What it drops is only what getRemPieces did for *eviction*, which the watchdog
+// threw away anyway: walking every piece, summing the fill, building and
+// sorting the removal list. On a 28 GB torrent that is a 14k-piece walk plus a
+// sort every five seconds while anyone is watching.
+func (c *Cache) rearmPriorities() {
+	readers := c.readersSnapshot()
+	if len(readers) == 0 {
+		return
+	}
+	ranges := make([]Range, 0, len(readers))
+	for _, r := range readers {
+		r.checkReader()
+		if r.isUse {
+			ranges = append(ranges, r.getPiecesRange())
+		}
+	}
+	merged := mergeRange(ranges)
+	if len(merged) == 0 {
+		return
+	}
+	c.clearPriority()
+	c.setLoadPriority(merged)
 }
 
 func (c *Cache) SetTorrent(torr *torrent.Torrent) {
@@ -320,6 +355,18 @@ func (c *Cache) GetState() *state.CacheState {
 		})
 	}
 
+	// The accumulation above is NOT `filledSize`. They answer different
+	// questions and are only equal with UseDisk:
+	//
+	//   filledSize — what the cache is charged against `capacity`. MemPiece adds
+	//                the whole allocated buffer (mempiece.go), DiskPiece the
+	//                file size (diskpiece.go).
+	//   sum(p.Size) — bytes of data actually written into those pieces.
+	//
+	// Replacing this loop's `fill` with `filledSize.Load()` over-reports by a
+	// partially-written buffer in RAM mode (measured: 1024 vs 100), and
+	// under-counts nothing, but "how much is preloaded" must mean data, not
+	// allocation. See TestFilledIsNotTheFilledSize for the guard.
 	c.filled = fill
 	cState.Capacity = c.capacity
 	cState.PiecesLength = c.pieceLength
