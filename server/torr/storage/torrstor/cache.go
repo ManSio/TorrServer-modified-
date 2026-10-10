@@ -242,6 +242,11 @@ func (c *Cache) Close() error {
 
 	c.storage.removeCache(c.hash)
 
+	// Drop the handles before unlinking anything, not after: Windows refuses to
+	// remove a file that is still open, and on Linux the unlink would strand the
+	// inode while the pool kept writing to it.
+	closePieceFiles(c)
+
 	if settings.BTsets.RemoveCacheOnDrop {
 		name := filepath.Join(settings.BTsets.TorrentsSavePath, c.hash.HexString())
 		if name != "" && name != "/" {
@@ -264,6 +269,16 @@ func (c *Cache) Close() error {
 
 	utils.FreeOSMemGC()
 	return nil
+}
+
+// closePieceFiles drops the cached handles of a cache's pieces. Called from
+// Close before any of its files are unlinked, for the same reason
+// DiskPiece.Release does it per piece: an open handle outlives the name.
+func closePieceFiles(c *Cache) {
+	if c.storage == nil || c.storage.files == nil {
+		return
+	}
+	c.storage.files.ForgetDir(filepath.Join(settings.BTsets.TorrentsSavePath, c.hash.HexString()) + string(os.PathSeparator))
 }
 
 // releaseOnClose keeps the global counters honest when a cache goes away.

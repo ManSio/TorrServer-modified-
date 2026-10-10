@@ -90,7 +90,14 @@ func cacheDirBytes(t *testing.T, path string) int64 {
 		return 0
 	}
 	for _, e := range entries {
-		if info, err := e.Info(); err == nil && !e.IsDir() {
+		if e.IsDir() {
+			continue
+		}
+		// Stat each entry rather than trusting e.Info(): the size in a directory
+		// entry is not refreshed for a file that still has an open handle on
+		// Windows, and the pool deliberately keeps handles open. Production is
+		// Linux, but a test that can only pass there is a test nobody runs.
+		if info, serr := os.Stat(filepath.Join(path, e.Name())); serr == nil && !info.IsDir() {
 			total += info.Size()
 		}
 	}

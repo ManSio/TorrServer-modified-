@@ -32,7 +32,11 @@ type Storage struct {
 	// 123.8 GiB on disk) — the LRU never even started. filledSize is
 	// *transferred* to orphanBytes on Close, so the sum is preserved.
 	orphanBytes atomic.Int64
-	mu          sync.Mutex
+	// files caches open piece-file handles. Opening and closing a file per
+	// piece read/write was one of the largest CPU costs while downloading;
+	// see filepool.go for the measurement.
+	files         *filePool
+	mu            sync.Mutex
 	// orphanDirs is the last disk scan of TorrentsSavePath: size + newest
 	// mtime per hash dir that has no cache in s.caches.
 	orphanDirs      []orphanDir
@@ -88,6 +92,7 @@ func NewStorage(capacity int64) *Storage {
 	stor.capacity = capacity
 	stor.caches = make(map[metainfo.Hash]*Cache)
 	stor.cleanupCh = make(chan struct{}, 1)
+	stor.files = newFilePool(PieceFilePoolLimit)
 	stor.doneCh = make(chan struct{})
 	stor.wg.Add(1)
 	go stor.cleanupLoop()
@@ -431,6 +436,17 @@ func (s *Storage) removeOrphanDir(hex string) (int64, bool) {
 		// reaper). Forget it instead of counting bytes that are not there.
 		s.dropOrphanDir(hex)
 		return 0, false
+	}
+	// Any handle still open on a file in this directory must be dropped first:
+	// RemoveAll unlinks the name but the inode survives while the fd is open,
+	// so a later WriteAt would fill a file no path points at. Handles a reader
+	// is holding right now are left alone (and the dir kept), same as the
+	// per-piece path.
+	if s.files != nil {
+		dir := filepath.Join(settings.BTsets.TorrentsSavePath, hex) + string(os.PathSeparator)
+		if stuck := s.files.ForgetDir(dir); stuck > 0 {
+			return 0, false
+		}
 	}
 	if err := os.RemoveAll(filepath.Join(settings.BTsets.TorrentsSavePath, hex)); err != nil {
 		log.TLogln("[CACHE] failed to remove orphan dir", hex, err)
@@ -958,6 +974,11 @@ func (s *Storage) Close() error {
 	// kept reading settings.BTsets while the next test rewrote it.
 	if s.closed.CompareAndSwap(false, true) {
 		close(s.doneCh)
+	}
+	// Every piece file handle: an fd left open outlives the file it names, and
+	// "file busy" is a far more confusing failure than a late close.
+	if s.files != nil {
+		s.files.CloseAll()
 	}
 	s.mu.Lock()
 	caches := make([]*Cache, 0, len(s.caches))
