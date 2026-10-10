@@ -1054,6 +1054,24 @@ func (s *Storage) ViewerDiagnostics() (protectedBytes int64, viewers int64) {
 	return s.lastProtectedBytes.Load(), s.lastViewers.Load()
 }
 
+// ActiveReaderTelemetry returns aggregate read counters for all live readers.
+// Only atomic counters are touched (written by the stream goroutine), so this
+// never races with active reads. Exposed for the EnableDebug /stat block.
+func (s *Storage) ActiveReaderTelemetry() (calls, bytes uint64, n int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, c := range s.caches {
+		c.muReaders.Lock()
+		for r := range c.readers {
+			n++
+			calls += r.readCalls.Load()
+			bytes += r.readBytes.Load()
+		}
+		c.muReaders.Unlock()
+	}
+	return
+}
+
 // ProtectionTarget exposes the shared protection ceiling to callers outside
 // this package (used to cap read-ahead globally).
 func (c *Cache) ProtectionTarget() int64 { return c.storage.ProtectionTarget() }

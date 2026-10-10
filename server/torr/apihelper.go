@@ -348,6 +348,15 @@ func (torr *BTServer) WriteCacheStatus(w io.Writer) {
 			viewers, humanBytes(bts.storage.ProtectedBytesNow()),
 			humanBytes(bts.storage.ProtectionTarget()))
 	}
+	// Debug telemetry: amortization of /stream reads. With the 1 MiB bufio
+	// wrapper ReadCalls hides how many HTTP reads the anacrolix reader served;
+	// without it they roughly match. Read during a paused stream measures
+	// abuse, not health — read while playing.
+	if sets.BTsets.EnableDebug {
+		calls, bytes, n := bts.storage.ActiveReaderTelemetry()
+		_, _ = fmt.Fprintf(w, "Cache: readers %d, ReadCalls %d, ReadBytes %s\n",
+			n, calls, humanBytes(int64(bytes)))
+	}
 }
 
 func percent(a, b int64) float64 {

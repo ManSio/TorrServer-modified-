@@ -3,6 +3,7 @@ package torrstor
 import (
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/anacrolix/torrent"
@@ -29,6 +30,10 @@ type Reader struct {
 	// checkReader mistakes a busy reader for an abandoned one and
 	// readerOff seeks it to 0 mid-read (upstream PR #876 port).
 	inFlight int
+	// Debug telemetry. Atomic: read from /stat while the stream goroutine
+	// writes them, so no reader mutex is involved.
+	readCalls atomic.Uint64
+	readBytes atomic.Uint64
 }
 
 func newReader(file *torrent.File, cache *Cache) *Reader {
@@ -81,6 +86,8 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 		r.beginIO()
 		n, err = r.Reader.Read(p)
 		r.endIO()
+		r.readCalls.Add(1)
+		r.readBytes.Add(uint64(max(n, 0)))
 
 		// samsung tv fix xvid/divx
 		//if r.offset == 0 && len(p) >= 192 {
