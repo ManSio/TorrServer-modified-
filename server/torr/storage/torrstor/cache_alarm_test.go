@@ -30,7 +30,7 @@ func alarmTestSettings(t *testing.T) string {
 		ConnectionsLimit:  25,
 		CacheHysteresis:   0.9,
 	}
-	t.Cleanup(func() { settings.BTsets = nil })
+	// settings.BTsets is left in place on purpose — see cache_limit_test.go.
 	return dir
 }
 

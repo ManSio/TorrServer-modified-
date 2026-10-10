@@ -29,7 +29,11 @@ func diskTestSettings(t *testing.T) string {
 		ConnectionsLimit:  25,
 		CacheHysteresis:   0.9,
 	}
-	t.Cleanup(func() { settings.BTsets = nil })
+	// Do NOT nil settings.BTsets here. Background workers (cleanupLoop,
+	// Cache.priorityWatchdog) read this global, and niling it in a cleanup
+	// races with any worker that has not finished yet — the race detector
+	// reported it as a data race inside whichever test ran next. Every test
+	// configures the fields it needs, so leaving the struct is harmless.
 	return dir
 }
 
@@ -37,6 +41,11 @@ func newIdleStorage(t *testing.T, capacity int64) *Storage {
 	t.Helper()
 	stor := NewStorage(capacity)
 	stor.lastCleanupTime.Store(0)
+	// Close it for the caller: an unclosed Storage keeps its cleanupLoop
+	// goroutine alive for the whole package run, and that loop reads
+	// settings.BTsets — so the next test's writes of that global race with it.
+	// Storage.Close is idempotent, so a test may also defer stor.Close().
+	t.Cleanup(func() { stor.Close() })
 	return stor
 }
 

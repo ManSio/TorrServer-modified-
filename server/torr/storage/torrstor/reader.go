@@ -64,6 +64,10 @@ func (r *Reader) Seek(offset int64, whence int) (n int64, err error) {
 	r.endIO()
 	r.offset = n
 	r.lastAccess = time.Now().Unix()
+	// Priorities are recomputed here instead of waiting for the 5 s watchdog:
+	// right after a seek the client would otherwise keep requesting pieces
+	// around the old position while the viewer waits on a hole.
+	go r.cache.getRemPieces()
 	return
 }
 
@@ -112,6 +116,20 @@ func (r *Reader) SetReadahead(length int64) {
 		r.Reader.SetReadahead(length)
 	}
 	r.readahead = length
+}
+
+// setClientReadahead changes only how much the anacrolix reader buffers,
+// leaving our own protection width alone.
+//
+// SetReadahead cannot be used for parking: it also rewrites r.readahead, and
+// the protection window is derived from r.readahead. Parking a reader
+// therefore collapsed the window to ~2 pieces, and eviction was then free to
+// delete the paused viewer's data within seconds — measured: a TV paused for
+// 120 s kept 3 of 14 window pieces instead of all 14.
+func (r *Reader) setClientReadahead(length int64) {
+	if r.isUse {
+		r.Reader.SetReadahead(length)
+	}
 }
 
 func (r *Reader) Offset() int64 {
@@ -206,7 +224,9 @@ func (r *Reader) readerOff() {
 		return
 	}
 	if r.isUse {
-		r.SetReadahead(0)
+		// Stop buffering, but keep the window width: the protection window is
+		// computed from r.readahead and a paused viewer is still protected.
+		r.setClientReadahead(0)
 		r.isUse = false
 		if r.offset > 0 {
 			r.Reader.Seek(0, io.SeekStart)

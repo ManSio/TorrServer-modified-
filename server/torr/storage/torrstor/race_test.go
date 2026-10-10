@@ -18,10 +18,21 @@ func testInfo() *metainfo.Info {
 	}
 }
 
+// initTestSettings guarantees settings.BTsets exists.
+//
+// It deliberately does NOT reset BTsets to nil afterwards. Background workers
+// (evictionWorker, priorityWatchdog, the priority refresh Reader.Seek spawns)
+// outlive their test and read this global — diskMode() alone does it on every
+// cleanup tick. A t.Cleanup that nils the struct is a write racing those reads:
+// the race detector caught it (2026-10-06, go1.27 -race on linux/amd64) and it
+// failed the whole package, hiding whatever the real code did.
+//
+// Leaving the struct in place is safe: every test sets the fields it depends on
+// (UseDisk, ReaderReadAheadMB, ConnectionsLimit) instead of relying on a zero
+// value.
 func initTestSettings(t *testing.T) {
 	if settings.BTsets == nil {
 		settings.BTsets = &settings.BTSets{}
-		t.Cleanup(func() { settings.BTsets = nil })
 	}
 }
 

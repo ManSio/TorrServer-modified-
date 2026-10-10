@@ -30,6 +30,10 @@ const (
 	MinReadAheadMB     = 4
 	MaxReadAheadMB     = 1024
 	DefaultReadAheadMB = 16
+	// ViewerIdleGraceDefault — 30 минут. Столько окно зрителя остаётся
+	// защищённым после последнего чтения (пауза, буферизация, фон).
+	ViewerIdleGraceDefault = 1800
+	ViewerIdleGraceMin     = 60
 )
 
 type BTSets struct {
@@ -49,6 +53,19 @@ type BTSets struct {
 	PreloadCacheMB    int64   // in MB, overrides PreloadCache percent if > 0 (allows e.g. 1MB at 100GB+ cache)
 	OneCacheForAll    bool    // limit cache globally across all torrents instead of per-torrent
 	CacheHysteresis   float64 // eviction threshold (0.50-1.0), default 0.90 = clean down to 90%
+	// ViewerIdleGraceSec is how long a viewer's window stays protected from
+	// eviction after its last read.
+	//
+	// It exists because parking a reader (checkReader does it after 60 s of
+	// silence when a cache has more than one reader) used to drop the
+	// protection entirely: a TV on pause lost already-downloaded data and had
+	// to re-download it. Measured 2026-10-05 — pause 120 s, 14/14 pieces of
+	// the paused window evicted while the other viewer kept all 14.
+	//
+	// Protection now survives the pause and expires only after this grace, so
+	// a forgotten player still frees its memory eventually. Seconds, 0 = use
+	// ViewerIdleGraceDefault.
+	ViewerIdleGraceSec int `json:"ViewerIdleGraceSec"`
 
 	// Disk
 	UseDisk           bool
@@ -224,6 +241,7 @@ func SetDefaultConfig() {
 	sets.DefaultTrackers = DefaultTrackersText
 	sets.TorrentDisconnectTimeout = 30
 	sets.ReaderReadAheadMB = DefaultReadAheadMB
+	sets.ViewerIdleGraceSec = ViewerIdleGraceDefault
 	sets.ResponsiveMode = true
 	sets.ShowFSActiveTorr = true
 	sets.StoreSettingsInJson = true
@@ -258,6 +276,9 @@ func loadBTSets() {
 			}
 			if BTsets.ReaderReadAheadMB > MaxReadAheadMB {
 				BTsets.ReaderReadAheadMB = MaxReadAheadMB
+			}
+			if BTsets.ViewerIdleGraceSec < ViewerIdleGraceMin {
+				BTsets.ViewerIdleGraceSec = ViewerIdleGraceDefault
 			}
 			// Set default TMDB settings if missing (for existing configs)
 			if BTsets.TMDBSettings.APIURL == "" {

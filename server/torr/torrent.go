@@ -257,6 +257,17 @@ func (t *Torrent) updateRA() {
 		return
 	}
 	adj := readAheadBytes(t.cache.GetCapacity(), t.cache.Readers(), settings.BTsets.ReaderReadAheadMB)
+	// Global share. readAheadBytes only divides the window by the readers of
+	// THIS cache while measuring against the global capacity, so two films with
+	// two viewers each asked for twice the limit between them and the cache sat
+	// at 164% of it (measured 2026-10-05). Split the eviction target between all
+	// active viewers instead: buffering more than the cache can hold is data
+	// that eviction will delete again a few minutes later.
+	if n := t.cache.ActiveViewerCount(); n > 1 {
+		if share := t.cache.ProtectionTarget() / int64(n); adj > share {
+			adj = share
+		}
+	}
 	go t.cache.AdjustRA(adj)
 }
 

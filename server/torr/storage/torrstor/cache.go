@@ -92,13 +92,23 @@ func (c *Cache) Init(info *metainfo.Info, hash metainfo.Hash) {
 		c.pieces[i] = NewPiece(i, c)
 	}
 
+	c.storage.wg.Add(2)
 	go c.evictionWorker()
 	go c.priorityWatchdog()
 }
 
 func (c *Cache) evictionWorker() {
+	defer c.storage.wg.Done()
 	for {
 		select {
+		case <-c.storage.doneCh:
+			// Storage is shutting down: flush, then leave. Without this the
+			// worker outlived Close by up to a second and kept deleting files
+			// of a storage that was already closed.
+			for len(c.evictChan) > 0 {
+				_ = os.Remove(<-c.evictChan)
+			}
+			return
 		case path := <-c.evictChan:
 			_ = os.Remove(path)
 		case <-time.After(time.Second):
@@ -137,16 +147,21 @@ func (c *Cache) updateLRU(p *Piece) {
 // connected. Re-arming them periodically breaks that cycle regardless of how
 // the priorities were lost.
 func (c *Cache) priorityWatchdog() {
+	defer c.storage.wg.Done()
 	for {
-		time.Sleep(5 * time.Second)
-		if c.isClosed.Load() {
-			return
-		}
-		if c.torrent == nil {
-			continue
-		}
-		if c.GetUseReaders() > 0 {
-			c.getRemPieces()
+		select {
+		case <-c.storage.doneCh:
+			return // storage closed: nothing left to prioritise
+		case <-time.After(5 * time.Second):
+			if c.isClosed.Load() {
+				return
+			}
+			if c.torrent == nil {
+				continue
+			}
+			if c.GetUseReaders() > 0 {
+				c.getRemPieces()
+			}
 		}
 	}
 }
@@ -334,21 +349,25 @@ func (c *Cache) getRemPieces() []*Piece {
 
 	// Determine which chunks can be deleted
 	for id, p := range c.getPieces() {
-		if p.Size > 0 {
-			fill += p.Size
+		// Sample under the piece lock: this runs in priorityWatchdog while a
+		// download may be writing the same piece (-race, 2026-10-06).
+		size, _, accessed := p.state()
+		if size > 0 {
+			fill += size
 		}
 		if len(ranges) > 0 {
 			if !inRanges(ranges, id) {
-				if p.Size > 0 && !c.isIdInFileBE(ranges, id) {
+				if size > 0 && !c.isIdInFileBE(ranges, id) {
 					piecesRemove = append(piecesRemove, p)
 				}
 			}
 		} else {
 			// When preloading, clear everything except the beginning and end of the file
-			if p.Size > 0 && !c.isIdInFileBE(ranges, id) {
+			if size > 0 && !c.isIdInFileBE(ranges, id) {
 				piecesRemove = append(piecesRemove, p)
 			}
 		}
+		_ = accessed
 	}
 
 	c.clearPriority()

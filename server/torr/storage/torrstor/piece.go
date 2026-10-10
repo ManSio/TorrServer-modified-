@@ -55,13 +55,53 @@ func (p *Piece) ReadAt(b []byte, off int64) (n int, err error) {
 }
 
 func (p *Piece) MarkComplete() error {
+	// Same lock the writers hold: the eviction worker reads Complete while a
+	// download may be marking pieces complete, and reading it unlocked is a data
+	// race (found by -race, 2026-10-06).
+	p.lockState()
 	p.Complete = true
+	p.unlockState()
 	return nil
 }
 
 func (p *Piece) MarkNotComplete() error {
+	p.lockState()
 	p.Complete = false
+	p.unlockState()
 	return nil
+}
+
+// lockState/unlockState take the mutex that WriteAt/Release hold, so that a
+// reader can sample the piece fields without racing a concurrent write.
+//
+// The fields live on Piece but the lock belongs to the storage impl (DiskPiece
+// or MemPiece), which is the lock every writer already takes.
+func (p *Piece) lockState() {
+	switch {
+	case p.dPiece != nil:
+		p.dPiece.mu.Lock()
+	case p.mPiece != nil:
+		p.mPiece.mu.Lock()
+	}
+}
+
+func (p *Piece) unlockState() {
+	switch {
+	case p.dPiece != nil:
+		p.dPiece.mu.Unlock()
+	case p.mPiece != nil:
+		p.mPiece.mu.Unlock()
+	}
+}
+
+// state samples the fields eviction and accounting need, under the writer's
+// lock. Without it the cleanup worker read Piece.Size while a piece was being
+// written to disk — a plain data race that `go test -race` rejects.
+func (p *Piece) state() (size int64, complete bool, accessed int64) {
+	p.lockState()
+	size, complete, accessed = p.Size, p.Complete, p.Accessed
+	p.unlockState()
+	return
 }
 
 func (p *Piece) Completion() storage.Completion {

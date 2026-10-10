@@ -337,6 +337,17 @@ func (torr *BTServer) WriteCacheStatus(w io.Writer) {
 	_, _ = fmt.Fprintf(w, "Cache: %s of %s (%.1f%%) — in memory %s, not in memory %s\n",
 		humanBytes(total), humanBytes(capacity), percent(total, capacity),
 		humanBytes(open), humanBytes(orphan))
+	// Viewer windows are the only thing eviction may not touch, so a cache that
+	// refuses to shrink is almost always them. Printed because the alternative
+	// is guessing from symptoms (a stalled stream, a limit that "does not
+	// work"). The figure is LIVE: the eviction pass does not run while the cache
+	// is under its target, so reporting its last result showed "0 B" with two
+	// TVs playing.
+	if viewers := bts.storage.ActiveViewers(); viewers > 0 {
+		_, _ = fmt.Fprintf(w, "Cache: viewers %d, protected %s (target %s)\n",
+			viewers, humanBytes(bts.storage.ProtectedBytesNow()),
+			humanBytes(bts.storage.ProtectionTarget()))
+	}
 }
 
 func percent(a, b int64) float64 {
