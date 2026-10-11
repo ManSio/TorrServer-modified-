@@ -172,8 +172,20 @@ func (t *Torrent) WaitInfo() bool {
 			storage := t.bt.storage
 			t.bt.mu.RUnlock()
 			if storage != nil {
-				t.cache = storage.GetCache(t.Hash())
-				t.cache.SetTorrent(t.Torrent)
+				// GetCache returns nil when the storage does not know this hash
+				// yet. Assigning that nil over a working cache and then calling
+				// SetTorrent on it panicked the stream handler, which is why
+				// seeking died silently: the player opened a new range request,
+				// the handler panicked, and nothing was served from the new
+				// position. It had happened 23 times since 2026-08-29,
+				// independently of any readahead change.
+				//
+				// Keep whatever cache we already had rather than losing it to a
+				// lookup that came back empty.
+				if cache := storage.GetCache(t.Hash()); cache != nil {
+					t.cache = cache
+					cache.SetTorrent(t.Torrent)
+				}
 			}
 		}
 		return true

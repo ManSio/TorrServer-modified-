@@ -202,6 +202,13 @@ func (c *Cache) rearmPriorities() {
 }
 
 func (c *Cache) SetTorrent(torr *torrent.Torrent) {
+	// Defence in depth. Storage.GetCache returns nil for an unknown hash, and
+	// a nil *Cache reaching this method used to take the whole stream handler
+	// down with it. Callers are now checked, but a nil-receiver method that
+	// panics is one missed check away from the same panic again.
+	if c == nil {
+		return
+	}
 	c.torrent = torr
 }
 
