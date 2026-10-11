@@ -112,3 +112,42 @@ func TestPausePreloadKeepsAnExplicitValue(t *testing.T) {
 		t.Errorf("explicit PausePreloadAfterSec=300 became %d", got.PausePreloadAfterSec)
 	}
 }
+
+// A stored config from before BackgroundFetch has no key for it. The fetch
+// must be on for old installs too, or upgrading changes behaviour silently.
+func TestBackgroundFetchMigratesConfigsThatPredateIt(t *testing.T) {
+	stored, err := json.Marshal(map[string]any{
+		"ReaderReadAHead": 90,
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got := new(BTSets)
+	if err := json.Unmarshal(stored, got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	migrateBTSets(stored, got)
+	if !got.BackgroundFetch {
+		t.Error("config without the key loaded BackgroundFetch=false, want true")
+	}
+}
+
+// An explicit false stays false: someone who turned the fetch off did it on
+// purpose, and an upgrade must not switch it back on behind their back.
+func TestBackgroundFetchKeepsAnExplicitFalse(t *testing.T) {
+	stored, err := json.Marshal(map[string]any{
+		"ReaderReadAHead": 90,
+		"BackgroundFetch": false,
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got := new(BTSets)
+	if err := json.Unmarshal(stored, got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	migrateBTSets(stored, got)
+	if got.BackgroundFetch {
+		t.Error("explicit BackgroundFetch=false was overwritten with true")
+	}
+}

@@ -37,15 +37,9 @@ export default function PrimarySettingsComponent({
   cacheSize,
   isProMode,
   readAheadMB,
-  pausePreloadMB,
-  pausePreloadAfterSec,
-  stagingMB,
   setCacheSize,
   setCachePercentage,
   setReadAheadMB,
-  setPausePreloadMB,
-  setPausePreloadAfterSec,
-  setStagingMB,
   setPreloadCachePercentage,
   setPreloadCacheMB,
   updateSettings,
@@ -80,7 +74,7 @@ export default function PrimarySettingsComponent({
 
           <CacheLegendDot color={cacheAfterReaderColor} aria-hidden />
           <div className="cache-legend-value">
-            {pausePreloadMB} {t("MB")}
+            {readAheadMB} {t("MB")}
           </div>
           <div className="cache-legend-desc">
             {t("SettingsDialog.CacheAfterReaderDesc")}
@@ -112,94 +106,6 @@ export default function PrimarySettingsComponent({
           inputMin={4}
           inputMax={4096}
           step={4}
-        />
-
-        <SliderInput
-          isProMode={isProMode}
-          title={`${t("SettingsDialog.PausePreload")} - ${pausePreloadMB} ${t(
-            "MB"
-          )}`}
-          value={pausePreloadMB}
-          setValue={setPausePreloadMB}
-          sliderMin={0}
-          sliderMax={4096}
-          inputMin={0}
-          inputMax={4096}
-          step={4}
-        />
-
-        <SliderInput
-          isProMode={isProMode}
-          title={`${t(
-            "SettingsDialog.PausePreloadAfter"
-          )} - ${pausePreloadAfterSec} ${t("Sec")}`}
-          value={pausePreloadAfterSec}
-          setValue={setPausePreloadAfterSec}
-          sliderMin={0}
-          sliderMax={120}
-          inputMin={0}
-          inputMax={3600}
-          step={1}
-        />
-
-        <FormControlLabel
-          control={
-            <Switch
-              checked={!!settings.AutoTune}
-              onChange={inputForm}
-              id="AutoTune"
-              color="secondary"
-            />
-          }
-          label={t("SettingsDialog.AutoTune")}
-          labelPlacement="start"
-        />
-        <div>
-          <small>{t("SettingsDialog.AutoTuneDesc")}</small>
-        </div>
-
-        <FormControlLabel
-          control={
-            <Switch
-              checked={!!settings.PausePreloadUnbounded}
-              onChange={inputForm}
-              id="PausePreloadUnbounded"
-              color="secondary"
-            />
-          }
-          label={t("SettingsDialog.PausePreloadUnbounded")}
-          labelPlacement="start"
-        />
-        <div>
-          <small>{t("SettingsDialog.PausePreloadUnboundedDesc")}</small>
-        </div>
-
-        <FormControlLabel
-          control={
-            <Switch
-              checked={!!settings.BackgroundFetch}
-              onChange={inputForm}
-              id="BackgroundFetch"
-              color="secondary"
-            />
-          }
-          label={t("SettingsDialog.BackgroundFetch")}
-          labelPlacement="start"
-        />
-        <div>
-          <small>{t("SettingsDialog.BackgroundFetchDesc")}</small>
-        </div>
-
-        <SliderInput
-          isProMode={isProMode}
-          title={`${t("SettingsDialog.StagingMB")} - ${stagingMB} ${t("MB")}`}
-          value={stagingMB}
-          setValue={setStagingMB}
-          sliderMin={64}
-          sliderMax={1024}
-          inputMin={0}
-          inputMax={1024}
-          step={64}
         />
 
         <SliderInput

@@ -389,6 +389,9 @@ func SetDefaultConfig() {
 	sets.AutoTune = true
 	// 256 MB of staging at 10 MB/s is ~25 seconds of buffer.
 	sets.PauseFetchStagingMB = 256
+	// Background fetch on: the disk fills whenever bandwidth is left over,
+	// with no configuration. See BackgroundFetch.
+	sets.BackgroundFetch = true
 	sets.ResponsiveMode = true
 	sets.ShowFSActiveTorr = true
 	sets.StoreSettingsInJson = true
@@ -440,6 +443,9 @@ func migrateBTSets(stored []byte, sets *BTSets) {
 	}
 	if _, ok := raw["PauseFetchStagingMB"]; !ok {
 		sets.PauseFetchStagingMB = 256
+	}
+	if _, ok := raw["BackgroundFetch"]; !ok {
+		sets.BackgroundFetch = true
 	}
 }
 
