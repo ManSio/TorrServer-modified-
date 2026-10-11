@@ -174,6 +174,22 @@ export default function PrimarySettingsComponent({
           <small>{t("SettingsDialog.PausePreloadUnboundedDesc")}</small>
         </div>
 
+        <FormControlLabel
+          control={
+            <Switch
+              checked={!!settings.BackgroundFetch}
+              onChange={inputForm}
+              id="BackgroundFetch"
+              color="secondary"
+            />
+          }
+          label={t("SettingsDialog.BackgroundFetch")}
+          labelPlacement="start"
+        />
+        <div>
+          <small>{t("SettingsDialog.BackgroundFetchDesc")}</small>
+        </div>
+
         <SliderInput
           isProMode={isProMode}
           title={`${t("SettingsDialog.StagingMB")} - ${stagingMB} ${t("MB")}`}

@@ -126,6 +126,16 @@ type BTSets struct {
 	// this can pressure RAM. Off by default; turning it on means accepting
 	// that trade.
 	PausePreloadUnbounded bool `json:"PausePreloadUnbounded"`
+	// BackgroundFetch keeps downloading past the read window while playing,
+	// at the lowest priority, bounded by free cache space. Without it the
+	// download stops when the window fills and resumes only as the playhead
+	// advances; with it the disk keeps filling whenever bandwidth is left
+	// over, so a pause often finds the data already there and needs no
+	// special pause logic at all.
+	//
+	// Off by default: it spends bandwidth on parts the viewer may never
+	// reach if the film is abandoned early.
+	BackgroundFetch bool `json:"BackgroundFetch"`
 	// PauseFetchStagingMB caps how much unfinished download the pause fetch
 	// may hold before it stops asking for more. Applies in RAM mode only: in
 	// disk mode the chunks land straight in files, so there is nothing held

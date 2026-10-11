@@ -518,6 +518,31 @@ func (c *Cache) setLoadPriority(ranges []Range) {
 				limit++
 			}
 		}
+		// Background fetch: past the window, at Normal priority, so the disk
+		// keeps filling while playing instead of stopping at the window edge.
+		// Bounded by free cache space divided between readers (never crowds
+		// out anyone's window) and by the same budget (never crowds out other
+		// viewers). A paused viewer is just a viewer whose window stopped
+		// moving, so this covers pause too with no special pause path.
+		if settings.BTsets.BackgroundFetch {
+			freePieces := int((c.capacity - c.filledSize.Load()) / c.pieceLength / int64(len(readers)))
+			if freePieces < 0 {
+				freePieces = 0
+			}
+			for i := end; i < c.pieceCount && limit < count && freePieces > 0; i++ {
+				pc, ok := pieces[i]
+				if !ok || pc == nil {
+					continue
+				}
+				if !pc.Complete {
+					if c.torrent.PieceState(i).Priority != torrent.PiecePriorityNormal {
+						c.torrent.Piece(i).SetPriority(torrent.PiecePriorityNormal)
+					}
+					limit++
+					freePieces--
+				}
+			}
+		}
 	}
 }
 

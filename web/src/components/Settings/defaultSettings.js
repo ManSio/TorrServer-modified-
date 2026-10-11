@@ -6,6 +6,7 @@ export default {
   AutoTune: true,
   PausePreloadUnbounded: false,
   PauseFetchStagingMB: 256,
+  BackgroundFetch: false,
   PreloadCache: 50,
   UseDisk: false,
   TorrentsSavePath: "",
