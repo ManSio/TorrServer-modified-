@@ -99,6 +99,11 @@ func TestPauseWindowDefaultIsLargerThanPlaying(t *testing.T) {
 	sets.ReaderReadAheadMB = settings.DefaultReadAheadMB
 	sets.PausePreloadMB = settings.PausePreloadDefaultMB
 	sets.PausePreloadAfterSec = settings.PausePreloadAfterDefaultSec
+	// The owner asked for 10 s explicitly. Pin it, so a later tidy-up cannot
+	// silently make a pause take noticeably longer to take effect.
+	if sets.PausePreloadAfterSec != 10 {
+		t.Fatalf("default pause threshold is %d s, want 10", sets.PausePreloadAfterSec)
+	}
 	if sets.PausePreloadMB <= sets.ReaderReadAheadMB {
 		t.Fatalf("default pause window %d MB is not larger than the playing window %d MB",
 			sets.PausePreloadMB, sets.ReaderReadAheadMB)
