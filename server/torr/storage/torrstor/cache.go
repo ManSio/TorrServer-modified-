@@ -472,6 +472,35 @@ func priorityBudget(connectionsLimit, readers int) int {
 	return budget
 }
 
+// backgroundFetchEnd extends the background fetch past the current file's
+// end by one prefetch window, so the next episode starts instantly instead
+// of cold. 256 MB covers instant start plus buffer on any bitrate and wastes
+// nothing if the viewer stops at the credits. Files lie back to back in
+// piece space, so the pieces right past the end are the next episode's head.
+//
+// Clamped to the torrent end: the prefetch must not run past the last piece.
+// Split out so the bound is testable without a cache.
+func backgroundFetchEnd(fileEndPiece, pieceCount int, pieceLength int64) int {
+	const prefetchMB = 256
+	// Clamp the file end first: a stale end past the torrent must not push
+	// the fetch out as well.
+	if fileEndPiece > pieceCount {
+		fileEndPiece = pieceCount
+	}
+	if fileEndPiece < 0 {
+		fileEndPiece = 0
+	}
+	prefetchPieces := int((prefetchMB << 20) / pieceLength)
+	if prefetchPieces < 1 {
+		prefetchPieces = 1
+	}
+	fetchEnd := fileEndPiece + prefetchPieces
+	if fetchEnd > pieceCount {
+		fetchEnd = pieceCount
+	}
+	return fetchEnd
+}
+
 func (c *Cache) setLoadPriority(ranges []Range) {
 	readers := c.readersSnapshot()
 	pieces := c.getPieces()
@@ -529,6 +558,13 @@ func (c *Cache) setLoadPriority(ranges []Range) {
 		// episodes, but the background of episode 1 must not spill into
 		// episode 20's pieces. Without this bound a single viewer queues the
 		// whole torrent.
+		//
+		// Plus one prefetch window past the file end: the start of the next
+		// episode, so it opens instantly instead of cold. 256 MB is enough
+		// for instant start plus buffer on any bitrate, small enough to
+		// waste nothing if the viewer stops at the credits. Files lie back
+		// to back in piece space, so the pieces right past the end are the
+		// next episode's head (padding edge cases just fetch nothing).
 		if settings.BTsets.BackgroundFetch {
 			freePieces := int((c.capacity - c.filledSize.Load()) / c.pieceLength / int64(len(readers)))
 			if freePieces < 0 {
@@ -538,7 +574,8 @@ func (c *Cache) setLoadPriority(ranges []Range) {
 			if fileEndPiece > c.pieceCount {
 				fileEndPiece = c.pieceCount
 			}
-			for i := end; i < fileEndPiece && limit < count && freePieces > 0; i++ {
+			fetchEnd := backgroundFetchEnd(fileEndPiece, c.pieceCount, c.pieceLength)
+			for i := end; i < fetchEnd && limit < count && freePieces > 0; i++ {
 				pc, ok := pieces[i]
 				if !ok || pc == nil {
 					continue
