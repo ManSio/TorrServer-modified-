@@ -168,6 +168,8 @@
     "PausePreloadDesc": "How much is downloaded ahead while the player is paused. A paused viewer is asking for buffer, and this is what answers that request.",
     "PausePreloadAfter": "Pause after silence",
     "PausePreloadAfterDesc": "How many seconds without a read count as a pause.",
+    "AutoTune": "Auto-tune from hardware",
+    "AutoTuneDesc": "Size the pause buffer from RAM automatically. Turn off to set it by hand.",
     "RemoveCacheOnDrop": "Remove Cache from Disk on Drop Torrent",
     "RemoveCacheOnDropDesc": "If disabled, cache removed on delete torrent.",
     "RemoveRetrackers": "Remove retrackers",

@@ -326,9 +326,21 @@ func (t *Torrent) updateRA() {
 	if t.cache == nil || settings.BTsets == nil {
 		return
 	}
+	// AutoTune: derive the pause window from the hardware instead of the
+	// written setting. The server measures RAM and sizes the window to a safe
+	// share of it, so a small box gets a small window and a large box gets a
+	// large one with no configuration. An explicit 0 still disables the
+	// feature even with AutoTune on.
+	pauseMB := settings.BTsets.PausePreloadMB
+	if settings.BTsets.AutoTune && pauseMB != 0 {
+		pauseMB = torrstor.AutoPauseWindowMB(
+			torrstor.TotalMemoryBytes(),
+			t.cache.ActiveViewerCount(),
+		)
+	}
 	configured := pauseWindowMB(
 		settings.BTsets.ReaderReadAheadMB,
-		settings.BTsets.PausePreloadMB,
+		pauseMB,
 		t.cache.MaxReaderIdleSec(),
 		settings.BTsets.PausePreloadAfterSec,
 	)

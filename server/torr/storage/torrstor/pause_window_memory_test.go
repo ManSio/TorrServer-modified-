@@ -107,3 +107,36 @@ func TestDefaultPauseWindowFitsTheLiveMachine(t *testing.T) {
 	t.Logf("requested %d MB, allowed %d MB on a %.1f GiB machine",
 		requestedWin, got, float64(liveRAM)/(1<<30))
 }
+
+// AutoPauseWindowMB is what AutoTune feeds the pause logic instead of the
+// written setting. These cases pin it to hardware the owner actually has.
+func TestAutoPauseWindowMB(t *testing.T) {
+	cases := []struct {
+		name    string
+		mem     int64
+		viewers int
+		want    int
+	}{
+		// The live server: 3.45 GiB, one viewer. A quarter of RAM.
+		{"live machine one viewer", 3701067776, 1, 882},
+		{"live machine two viewers share it", 3701067776, 2, 441},
+		// A large box gets a large window with no configuration.
+		{"32 GiB one viewer", 32 << 30, 1, 8192},
+		// Unknown hardware falls back to the shipped default, not to zero.
+		// Zero would mean "no buffer" on a machine that simply reports
+		// nothing.
+		{"unknown memory falls back", 0, 1, 1024},
+		{"unknown viewers fall back", 3701067776, 0, 1024},
+		// A tiny board still gets a window, never nothing, and the floor
+		// holds when even a quarter of RAM is below it.
+		{"tiny machine still gets a window", 256 << 20, 1, 64},
+		{"floor holds on a tiny board", 8 << 20, 1, 4},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := AutoPauseWindowMB(c.mem, c.viewers); got != c.want {
+				t.Errorf("got %d MB, want %d MB", got, c.want)
+			}
+		})
+	}
+}

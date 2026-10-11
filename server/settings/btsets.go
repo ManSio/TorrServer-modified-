@@ -101,11 +101,20 @@ type BTSets struct {
 	PausePreloadMB int `json:"PausePreloadMB"`
 	// PausePreloadAfterSec is how long a reader must go without a read before
 	// PausePreloadMB applies.
-	PausePreloadAfterSec int     `json:"PausePreloadAfterSec"`
-	PreloadCache         float64 // in percent, rounded to hundredths (0.01% - 100%)
-	PreloadCacheMB       int64   // in MB, overrides PreloadCache percent if > 0 (allows e.g. 1MB at 100GB+ cache)
-	OneCacheForAll       bool    // limit cache globally across all torrents instead of per-torrent
-	CacheHysteresis      float64 // eviction threshold (0.50-1.0), default 0.90 = clean down to 90%
+	PausePreloadAfterSec int `json:"PausePreloadAfterSec"`
+	// AutoTune derives the pause window from the hardware instead of using
+	// PausePreloadMB as written. When true, the server measures total RAM and
+	// sizes the window to a safe share of it, so the setting follows the
+	// machine rather than the other way round: a 3 GiB box gets a small
+	// window, a 32 GiB box gets a large one, and neither needs to be told.
+	//
+	// An explicit PausePreloadMB of 0 still means "no pause window", even with
+	// AutoTune on: turning the feature off must stay off.
+	AutoTune        bool    `json:"AutoTune"`
+	PreloadCache    float64 // in percent, rounded to hundredths (0.01% - 100%)
+	PreloadCacheMB  int64   // in MB, overrides PreloadCache percent if > 0 (allows e.g. 1MB at 100GB+ cache)
+	OneCacheForAll  bool    // limit cache globally across all torrents instead of per-torrent
+	CacheHysteresis float64 // eviction threshold (0.50-1.0), default 0.90 = clean down to 90%
 	// ReaderIdleGraceSec is how long a viewer's window stays protected from
 	// eviction after its last read. (existing) ...
 	ViewerIdleGraceSec int `json:"ViewerIdleGraceSec"`
@@ -332,6 +341,8 @@ func SetDefaultConfig() {
 	// letting it rediscover the same 90 MB every time it pauses.
 	sets.PausePreloadMB = PausePreloadDefaultMB
 	sets.PausePreloadAfterSec = PausePreloadAfterDefaultSec
+	// Tune from the hardware unless the user says otherwise. See AutoTune.
+	sets.AutoTune = true
 	sets.ResponsiveMode = true
 	sets.ShowFSActiveTorr = true
 	sets.StoreSettingsInJson = true
@@ -377,6 +388,9 @@ func migrateBTSets(stored []byte, sets *BTSets) {
 	}
 	if _, ok := raw["PausePreloadAfterSec"]; !ok {
 		sets.PausePreloadAfterSec = PausePreloadAfterDefaultSec
+	}
+	if _, ok := raw["AutoTune"]; !ok {
+		sets.AutoTune = true
 	}
 }
 

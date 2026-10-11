@@ -3,6 +3,7 @@ export default {
   ReaderReadAHead: 16,
   PausePreloadMB: 1024,
   PausePreloadAfterSec: 10,
+  AutoTune: true,
   PreloadCache: 50,
   UseDisk: false,
   TorrentsSavePath: "",

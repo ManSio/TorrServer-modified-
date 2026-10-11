@@ -140,6 +140,22 @@ export default function PrimarySettingsComponent({
           step={1}
         />
 
+        <FormControlLabel
+          control={
+            <Switch
+              checked={!!settings.AutoTune}
+              onChange={inputForm}
+              id="AutoTune"
+              color="secondary"
+            />
+          }
+          label={t("SettingsDialog.AutoTune")}
+          labelPlacement="start"
+        />
+        <div>
+          <small>{t("SettingsDialog.AutoTuneDesc")}</small>
+        </div>
+
         <SliderInput
           isProMode={isProMode}
           title={`${t(
