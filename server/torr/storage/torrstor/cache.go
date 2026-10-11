@@ -546,6 +546,30 @@ func (c *Cache) Readers() int {
 	return len(c.readers)
 }
 
+// MaxReaderIdleSec is how long the longest-idle active reader has gone without
+// a read, in seconds. 0 means someone read just now.
+//
+// It drives the pause preload: a viewer that stopped reading is a viewer that
+// pressed pause, and the readahead window should grow while it waits instead of
+// stopping at the configured size (measured: 90 MB, then nothing at all until
+// playback drained it again).
+func (c *Cache) MaxReaderIdleSec() int64 {
+	if c == nil {
+		return 0
+	}
+	now := time.Now().Unix()
+	var worst int64
+	for _, r := range c.readersSnapshot() {
+		if !r.isUse {
+			continue
+		}
+		if idle := now - r.lastAccess; idle > worst {
+			worst = idle
+		}
+	}
+	return worst
+}
+
 func (c *Cache) CloseReader(r *Reader) {
 	r.cache.muReaders.Lock()
 	delete(r.cache.readers, r)

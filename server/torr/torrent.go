@@ -79,9 +79,9 @@ type Torrent struct {
 	// BestCompression; the inputs (hash, title, poster, category, size,
 	// trackers) change only when a torrent is saved or renamed, so the token is
 	// recomputed only when one of them changes.
-	torrsHashMu      sync.Mutex
-	torrsHashKey     string
-	torrsHashCache   string
+	torrsHashMu    sync.Mutex
+	torrsHashKey   string
+	torrsHashCache string
 
 	// Throttle for `Torrent.BytesCompleted()`, which walks every piece under
 	// the client lock. anacrolix upstream suggests keeping an incremental
@@ -287,11 +287,40 @@ func readAheadBytes(cacheCapacity int64, readers, configuredMB int) int64 {
 	return adj
 }
 
+// pauseWindowMB picks which configured window to use: the playing one, or the
+// larger pause one once a viewer has been silent long enough.
+//
+// Idle time is the signal because there is no "paused" flag: from inside the
+// server a paused player and a stalled one look identical, and both want
+// buffer rather than the tight playing window. Split out from updateRA so the
+// decision can be tested without a torrent, the same reason readAheadBytes is
+// separate.
+func pauseWindowMB(playingMB, pauseMB int, idleSec int64, afterSec int) int {
+	// Never shrink: a boost below the playing window is a misconfiguration,
+	// and applying it would make a pause *reduce* buffering.
+	if pauseMB <= playingMB {
+		return playingMB
+	}
+	if pauseMB <= 0 {
+		return playingMB
+	}
+	if idleSec < int64(afterSec) {
+		return playingMB
+	}
+	return pauseMB
+}
+
 func (t *Torrent) updateRA() {
 	if t.cache == nil || settings.BTsets == nil {
 		return
 	}
-	adj := readAheadBytes(t.cache.GetCapacity(), t.cache.Readers(), settings.BTsets.ReaderReadAheadMB)
+	configured := pauseWindowMB(
+		settings.BTsets.ReaderReadAheadMB,
+		settings.BTsets.PausePreloadMB,
+		t.cache.MaxReaderIdleSec(),
+		settings.BTsets.PausePreloadAfterSec,
+	)
+	adj := readAheadBytes(t.cache.GetCapacity(), t.cache.Readers(), configured)
 	// Global share. readAheadBytes only divides the window by the readers of
 	// THIS cache while measuring against the global capacity, so two films with
 	// two viewers each asked for twice the limit between them and the cache sat

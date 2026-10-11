@@ -28,13 +28,24 @@ type TMDBConfig struct {
 // Read-ahead window bounds, in MB. The window must stay a small fraction of
 // the cache or eviction cannot bring the cache back under its limit.
 const (
-	MinReadAheadMB     = 4
-	MaxReadAheadMB     = 1024
+	MinReadAheadMB = 4
+	MaxReadAheadMB = 1024
+	// DefaultReadAheadMB is the *playing* window. A paused viewer gets
+	// PausePreloadDefaultMB instead — see PausePreloadMB.
 	DefaultReadAheadMB = 16
 	// ViewerIdleGraceDefault — 30 минут. Столько окно зрителя остаётся
 	// защищённым после последнего чтения (пауза, буферизация, фон).
 	ViewerIdleGraceDefault = 1800
 	ViewerIdleGraceMin     = 60
+
+	// PausePreloadDefaultMB — окно для зрителя, поставленного на паузу.
+	// В 20 раз больше игрового: пауза означает «дай буфер», а измеренное
+	// поведение (90 МБ и тишина) этот запрос не выполняло.
+	PausePreloadDefaultMB = 1024
+	// PausePreloadAfterDefaultSec — сколько тишины считается паузой: мало,
+	// чтобы намеренная пауза срабатывала, велико, чтобы обычная буферизация
+	// не триггерила.
+	PausePreloadAfterDefaultSec = 15
 
 	// DefaultCacheStateTTLSec — 1 секунда. Меньше смысла нет: за это время
 	// состояние кэша уже изменилось. Больше — UI заметно отстаёт.
@@ -76,23 +87,26 @@ type BTSets struct {
 	// cache that eviction was not allowed to touch (measured 2026-10-01). The
 	// JSON key stays the same so existing configs keep working — old values
 	// (5..100) land in the new range as 5..100 MB, which is a sane window.
-	ReaderReadAheadMB int     `json:"ReaderReadAHead"`
-	PreloadCache      float64 // in percent, rounded to hundredths (0.01% - 100%)
-	PreloadCacheMB    int64   // in MB, overrides PreloadCache percent if > 0 (allows e.g. 1MB at 100GB+ cache)
-	OneCacheForAll    bool    // limit cache globally across all torrents instead of per-torrent
-	CacheHysteresis   float64 // eviction threshold (0.50-1.0), default 0.90 = clean down to 90%
-	// ViewerIdleGraceSec is how long a viewer's window stays protected from
-	// eviction after its last read.
+	ReaderReadAheadMB int `json:"ReaderReadAHead"`
+	// PausePreloadMB is the readahead window used once a viewer stops reading,
+	// i.e. while the film is paused. 0 = keep ReaderReadAheadMB at all times.
 	//
-	// It exists because parking a reader (checkReader does it after 60 s of
-	// silence when a cache has more than one reader) used to drop the
-	// protection entirely: a TV on pause lost already-downloaded data and had
-	// to re-download it. Measured 2026-10-05 — pause 120 s, 14/14 pieces of
-	// the paused window evicted while the other viewer kept all 14.
-	//
-	// Protection now survives the pause and expires only after this grace, so
-	// a forgotten player still frees its memory eventually. Seconds, 0 = use
-	// ViewerIdleGraceDefault.
+	// It exists because a paused viewer is a viewer asking for more buffer, and
+	// the fixed window stopped exactly there: with ReaderReadAHead=90 MB the
+	// server fetched 90 MB ahead of the playhead and then nothing, so watching
+	// twenty seconds and pausing to build a buffer bought the same 90 MB every
+	// time. Growing the window also grows getOffsetRange, so what it pulls is
+	// protected from eviction for as long as the viewer stays idle.
+	PausePreloadMB int `json:"PausePreloadMB"`
+	// PausePreloadAfterSec is how long a reader must go without a read before
+	// PausePreloadMB applies.
+	PausePreloadAfterSec int     `json:"PausePreloadAfterSec"`
+	PreloadCache         float64 // in percent, rounded to hundredths (0.01% - 100%)
+	PreloadCacheMB       int64   // in MB, overrides PreloadCache percent if > 0 (allows e.g. 1MB at 100GB+ cache)
+	OneCacheForAll       bool    // limit cache globally across all torrents instead of per-torrent
+	CacheHysteresis      float64 // eviction threshold (0.50-1.0), default 0.90 = clean down to 90%
+	// ReaderIdleGraceSec is how long a viewer's window stays protected from
+	// eviction after its last read. (existing) ...
 	ViewerIdleGraceSec int `json:"ViewerIdleGraceSec"`
 
 	// CacheStateTTL is how long a computed `CacheState` may be reused for the
@@ -231,6 +245,17 @@ func SetBTSets(sets *BTSets) {
 	if sets.ReaderReadAheadMB > MaxReadAheadMB {
 		sets.ReaderReadAheadMB = MaxReadAheadMB
 	}
+	// Same clamp for the pause window: it can be much larger than the playing
+	// one, but not past what a single reader may pin of the cache.
+	if sets.PausePreloadMB > MaxReadAheadMB {
+		sets.PausePreloadMB = MaxReadAheadMB
+	}
+	if sets.PausePreloadMB > 0 && sets.PausePreloadMB < MinReadAheadMB {
+		sets.PausePreloadMB = MinReadAheadMB
+	}
+	if sets.PausePreloadAfterSec < 0 {
+		sets.PausePreloadAfterSec = 0
+	}
 
 	if sets.PreloadCache < 0 {
 		sets.PreloadCache = 0
@@ -260,7 +285,8 @@ func SetBTSets(sets *BTSets) {
 
 	if sets.TorrentsSavePath == "" {
 		sets.UseDisk = false
-	} else if sets.UseDisk {		BTsets = sets
+	} else if sets.UseDisk {
+		BTsets = sets
 
 		go filepath.WalkDir(sets.TorrentsSavePath, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -301,6 +327,10 @@ func SetDefaultConfig() {
 	sets.TorrentDisconnectTimeout = 30
 	sets.ReaderReadAheadMB = DefaultReadAheadMB
 	sets.ViewerIdleGraceSec = ViewerIdleGraceDefault
+	// A paused viewer is asking for buffer; honour that by default rather than
+	// letting it rediscover the same 90 MB every time it pauses.
+	sets.PausePreloadMB = PausePreloadDefaultMB
+	sets.PausePreloadAfterSec = PausePreloadAfterDefaultSec
 	sets.ResponsiveMode = true
 	sets.ShowFSActiveTorr = true
 	sets.StoreSettingsInJson = true
