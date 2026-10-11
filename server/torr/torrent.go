@@ -332,6 +332,16 @@ func (t *Torrent) updateRA() {
 		t.cache.MaxReaderIdleSec(),
 		settings.BTsets.PausePreloadAfterSec,
 	)
+	// The pause window is downloaded-but-unread data, so it is RAM rather than
+	// disk cache, and the cache size says nothing about whether it fits. On the
+	// live server (3.45 GiB RAM, measured) a 1 GiB window per viewer would take
+	// a third of the machine and the box would start swapping long before
+	// anything visibly failed.
+	configured = torrstor.CapPauseWindowToMemory(
+		configured,
+		t.cache.ActiveViewerCount(),
+		torrstor.TotalMemoryBytes(),
+	)
 	adj := readAheadBytes(t.cache.GetCapacity(), t.cache.Readers(), configured)
 	// Global share. readAheadBytes only divides the window by the readers of
 	// THIS cache while measuring against the global capacity, so two films with
