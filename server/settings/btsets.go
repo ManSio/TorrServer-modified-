@@ -114,7 +114,18 @@ type BTSets struct {
 	//
 	// An explicit PausePreloadMB of 0 still means "no pause window", even with
 	// AutoTune on: turning the feature off must stay off.
-	AutoTune        bool    `json:"AutoTune"`
+	AutoTune bool `json:"AutoTune"`
+	// PausePreloadUnbounded removes the megabyte ceiling from the pause window
+	// and bounds it by the disk cache instead: while paused, the server
+	// downloads from the playhead to the end of the file, or until the cache
+	// is full, whichever comes first.
+	//
+	// This is how a paused film actually finishes downloading. The data lands
+	// on disk through the normal piece path, not in RAM - but the in-flight
+	// portion does pass through memory, so on a small box with a fast swarm
+	// this can pressure RAM. Off by default; turning it on means accepting
+	// that trade.
+	PausePreloadUnbounded bool `json:"PausePreloadUnbounded"`
 	PreloadCache    float64 // in percent, rounded to hundredths (0.01% - 100%)
 	PreloadCacheMB  int64   // in MB, overrides PreloadCache percent if > 0 (allows e.g. 1MB at 100GB+ cache)
 	OneCacheForAll  bool    // limit cache globally across all torrents instead of per-torrent

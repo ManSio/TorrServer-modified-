@@ -38,6 +38,42 @@ func AutoPauseWindowMB(totalMemBytes int64, viewers int) int {
 	return budgetMB
 }
 
+// UnboundedPauseWindowMB sizes a pause window by the disk cache instead of
+// megabytes: from the playhead to the end of the file, or until the cache is
+// full, whichever comes first.
+//
+// fileLen is the whole torrent, cacheFree is capacity minus filled, viewers
+// split the free space. The result is in MB, floored so a full cache still
+// leaves a minimal window rather than zero (zero would read as "disabled"
+// downstream), and never below zero.
+//
+// This is the "load until loaded" behind PausePreloadUnbounded. The data
+// lands on disk through the normal piece path; the in-flight portion passes
+// through memory, which is the trade the setting documents.
+func UnboundedPauseWindowMB(fileLen, cacheFree int64, viewers int) int {
+	if viewers <= 0 {
+		viewers = 1
+	}
+	// Never ask for more than the file holds: a window past the end is
+	// bytes that do not exist.
+	want := fileLen
+	// Never ask for more than the cache can still take, split between
+	// viewers. Asking past capacity is data eviction deletes again.
+	if share := cacheFree / int64(viewers); share < want {
+		want = share
+	}
+	if want < 0 {
+		want = 0
+	}
+	mb := int(want / (1 << 20))
+	// Floor at one full piece worth so the window stays meaningful even when
+	// the cache is nearly full; the caller clamps it to the piece count.
+	if mb < 4 && want > 0 {
+		mb = 4
+	}
+	return mb
+}
+
 // CapPauseWindowToMemory bounds a pause window by the RAM available to it.
 //
 // A window of 0 means "no pause preload" and must stay 0: 0 is how a user

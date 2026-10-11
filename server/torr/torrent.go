@@ -326,35 +326,54 @@ func (t *Torrent) updateRA() {
 	if t.cache == nil || settings.BTsets == nil {
 		return
 	}
-	// AutoTune: derive the pause window from the hardware instead of the
-	// written setting. The server measures RAM and sizes the window to a safe
-	// share of it, so a small box gets a small window and a large box gets a
-	// large one with no configuration. An explicit 0 still disables the
-	// feature even with AutoTune on.
-	pauseMB := settings.BTsets.PausePreloadMB
-	if settings.BTsets.AutoTune && pauseMB != 0 {
-		pauseMB = torrstor.AutoPauseWindowMB(
-			torrstor.TotalMemoryBytes(),
+	// PausePreloadUnbounded: while paused, download to the end of the file
+	// (or until the cache is full) instead of stopping at a megabyte window.
+	// This bypasses both the RAM cap and the megabyte clamp below, because
+	// the bound here is the disk cache, not memory: the data lands on disk
+	// through the normal piece path. The in-flight portion passes through
+	// RAM, which is the trade the setting documents.
+	idleSec := t.cache.MaxReaderIdleSec()
+	paused := idleSec >= int64(settings.BTsets.PausePreloadAfterSec)
+	var adj int64
+	if settings.BTsets.PausePreloadUnbounded && paused {
+		free := t.cache.GetCapacity() - t.cache.GetState().Filled
+		unboundedMB := torrstor.UnboundedPauseWindowMB(
+			t.Length(),
+			free,
 			t.cache.ActiveViewerCount(),
 		)
+		adj = int64(unboundedMB) << 20
+	} else {
+		// AutoTune: derive the pause window from the hardware instead of the
+		// written setting. The server measures RAM and sizes the window to a
+		// safe share of it, so a small box gets a small window and a large
+		// box gets a large one with no configuration. An explicit 0 still
+		// disables the feature even with AutoTune on.
+		pauseMB := settings.BTsets.PausePreloadMB
+		if settings.BTsets.AutoTune && pauseMB != 0 {
+			pauseMB = torrstor.AutoPauseWindowMB(
+				torrstor.TotalMemoryBytes(),
+				t.cache.ActiveViewerCount(),
+			)
+		}
+		configured := pauseWindowMB(
+			settings.BTsets.ReaderReadAheadMB,
+			pauseMB,
+			idleSec,
+			settings.BTsets.PausePreloadAfterSec,
+		)
+		// The pause window is downloaded-but-unread data, so it is RAM rather
+		// than disk cache, and the cache size says nothing about whether it
+		// fits. On the live server (3.45 GiB RAM, measured) a 1 GiB window
+		// per viewer would take a third of the machine and the box would
+		// start swapping long before anything visibly failed.
+		configured = torrstor.CapPauseWindowToMemory(
+			configured,
+			t.cache.ActiveViewerCount(),
+			torrstor.TotalMemoryBytes(),
+		)
+		adj = readAheadBytes(t.cache.GetCapacity(), t.cache.Readers(), configured)
 	}
-	configured := pauseWindowMB(
-		settings.BTsets.ReaderReadAheadMB,
-		pauseMB,
-		t.cache.MaxReaderIdleSec(),
-		settings.BTsets.PausePreloadAfterSec,
-	)
-	// The pause window is downloaded-but-unread data, so it is RAM rather than
-	// disk cache, and the cache size says nothing about whether it fits. On the
-	// live server (3.45 GiB RAM, measured) a 1 GiB window per viewer would take
-	// a third of the machine and the box would start swapping long before
-	// anything visibly failed.
-	configured = torrstor.CapPauseWindowToMemory(
-		configured,
-		t.cache.ActiveViewerCount(),
-		torrstor.TotalMemoryBytes(),
-	)
-	adj := readAheadBytes(t.cache.GetCapacity(), t.cache.Readers(), configured)
 	// Global share. readAheadBytes only divides the window by the readers of
 	// THIS cache while measuring against the global capacity, so two films with
 	// two viewers each asked for twice the limit between them and the cache sat

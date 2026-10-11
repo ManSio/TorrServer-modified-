@@ -156,6 +156,22 @@ export default function PrimarySettingsComponent({
           <small>{t("SettingsDialog.AutoTuneDesc")}</small>
         </div>
 
+        <FormControlLabel
+          control={
+            <Switch
+              checked={!!settings.PausePreloadUnbounded}
+              onChange={inputForm}
+              id="PausePreloadUnbounded"
+              color="secondary"
+            />
+          }
+          label={t("SettingsDialog.PausePreloadUnbounded")}
+          labelPlacement="start"
+        />
+        <div>
+          <small>{t("SettingsDialog.PausePreloadUnboundedDesc")}</small>
+        </div>
+
         <SliderInput
           isProMode={isProMode}
           title={`${t(

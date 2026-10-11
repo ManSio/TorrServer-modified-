@@ -140,3 +140,41 @@ func TestAutoPauseWindowMB(t *testing.T) {
 		})
 	}
 }
+
+// UnboundedPauseWindowMB is the "load until loaded" behind
+// PausePreloadUnbounded. The live shape: a 20 GB file, a 98 GiB cache with
+// 77 GiB filled (21 GiB free), one viewer.
+func TestUnboundedPauseWindowMB(t *testing.T) {
+	const (
+		file20G  = int64(20) << 30
+		cap98G   = int64(97891069696)
+		filled70 = int64(70) << 30
+		free21G  = cap98G - filled70
+	)
+	cases := []struct {
+		name    string
+		fileLen int64
+		free    int64
+		viewers int
+		wantMB  int
+	}{
+		// The file fits in the free cache: the window reaches the end.
+		{"file fits in free cache", file20G, free21G, 1, int(file20G >> 20)},
+		// The file does not fit: the window stops at the free space.
+		{"file larger than free cache", file20G, 1 << 30, 1, 1024},
+		// Two viewers split the free space.
+		{"two viewers split free space", file20G, free21G, 2, int(free21G / 2 >> 20)},
+		// A full cache still leaves a minimal window, never zero.
+		{"full cache floors instead of zeroing", file20G, 1 << 20, 1, 4},
+		// Overfull cache clamps to zero, not negative.
+		{"overfull cache clamps to zero", file20G, -1 << 30, 1, 0},
+		{"no viewers defaults to one", file20G, free21G, 0, int(file20G >> 20)},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := UnboundedPauseWindowMB(c.fileLen, c.free, c.viewers); got != c.wantMB {
+				t.Errorf("got %d MB, want %d MB", got, c.wantMB)
+			}
+		})
+	}
+}
