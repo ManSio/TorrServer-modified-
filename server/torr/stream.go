@@ -109,7 +109,7 @@ func (t *Torrent) Stream(fileID int, req *http.Request, resp http.ResponseWriter
 		if v.FileIndex == fileID {
 			timecode = v.TimeCode
 			break
-	    }
+		}
 	}
 	sets.SetViewed(&sets.Viewed{
 		Hash:      t.Hash().HexString(),
@@ -117,8 +117,7 @@ func (t *Torrent) Stream(fileID int, req *http.Request, resp http.ResponseWriter
 		TimeCode:  timecode,
 	})
 
-	// Set response headers
-	resp.Header().Set("Connection", "close")
+	applyStreamHeaders(resp.Header())
 	// Set response header for Kodi
 	resp.Header().Set("Server", "TorrServer (Portable SDK for UPnP devices)")
 	// Add timeout header if configured
@@ -175,6 +174,21 @@ func (t *Torrent) Stream(fileID int, req *http.Request, resp http.ResponseWriter
 }
 
 // GetActiveStreams returns number of currently active streams
+// applyStreamHeaders sets the headers every stream response needs.
+//
+// It used to force "Connection: close", which cost a fresh TCP handshake for
+// every single Range request. Players issue many small Range requests per
+// second - MKV Cues and index reads alone - so the connection was torn down
+// and rebuilt dozens of times a second, and that showed up as latency and
+// mid-playback stalls, worse with more than one client. Upstream TorrServer
+// PR #739 removed it for the same reason (commit 8f897c4e).
+//
+// net/http negotiates keep-alive from the request header on its own, so a
+// client that wants the connection closed still gets it.
+func applyStreamHeaders(h http.Header) {
+	h.Set("Accept-Ranges", "bytes")
+}
+
 func GetActiveStreams() int32 {
 	return atomic.LoadInt32(&activeStreams)
 }
