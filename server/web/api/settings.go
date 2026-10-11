@@ -1,7 +1,9 @@
 package api
 
 import (
+	"encoding/json"
 	"net/http"
+	"sync"
 
 	"server/bonjour"
 	"server/dlna"
@@ -43,10 +45,11 @@ func settings(c *gin.Context) {
 	}
 
 	if req.Action == "get" {
-		c.JSON(200, sets.BTsets)
+		c.Data(200, "application/json; charset=utf-8", settingsJSONBytes())
 		return
 	} else if req.Action == "set" {
 		torr.SetSettings(req.Sets)
+		invalidateSettingsJSON()
 		dlna.Stop()
 		if req.Sets.EnableDLNA {
 			dlna.Start()
@@ -61,6 +64,7 @@ func settings(c *gin.Context) {
 		return
 	} else if req.Action == "def" {
 		torr.SetDefSettings()
+		invalidateSettingsJSON()
 		dlna.Stop()
 		bonjour.Stop()
 		rutor.Stop()
@@ -68,4 +72,44 @@ func settings(c *gin.Context) {
 		return
 	}
 	c.AbortWithError(http.StatusBadRequest, errors.New("action is empty"))
+}
+
+// The web client polls /settings with action=get constantly - 9437 of the last
+// 20000 requests on the live server were this endpoint. Every one of them
+// re-marshalled the whole configuration into JSON to hand back bytes that were
+// identical to the previous 9437.
+//
+// The marshalled form is cached and rebuilt only when something actually
+// changes the settings, so a poll costs a slice lookup instead of a full
+// encode of a struct with dozens of fields and long tracker lists.
+var settingsJSONCache struct {
+	mu    sync.Mutex
+	data  []byte
+	valid bool
+}
+
+func settingsJSONBytes() []byte {
+	settingsJSONCache.mu.Lock()
+	defer settingsJSONCache.mu.Unlock()
+
+	if settingsJSONCache.valid && settingsJSONCache.data != nil {
+		return settingsJSONCache.data
+	}
+	buf, err := json.Marshal(sets.BTsets)
+	if err != nil {
+		// Fall back to encoding per request rather than caching a failure or
+		// an empty body: the client would keep the bad answer for good.
+		buf, _ = json.Marshal(nil)
+		return buf
+	}
+	settingsJSONCache.data = buf
+	settingsJSONCache.valid = true
+	return buf
+}
+
+func invalidateSettingsJSON() {
+	settingsJSONCache.mu.Lock()
+	settingsJSONCache.valid = false
+	settingsJSONCache.data = nil
+	settingsJSONCache.mu.Unlock()
 }
