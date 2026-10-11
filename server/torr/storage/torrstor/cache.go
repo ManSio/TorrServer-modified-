@@ -482,9 +482,9 @@ func priorityBudget(connectionsLimit, readers int) int {
 //
 // Clamped to the torrent end and floored so a zero-length file still moves
 // one piece. Split out so the bound is testable without a cache.
-func backgroundFetchEnd(fileEndPiece, pieceCount int, pieceLength, fileLength int64) int {
-	// Two episodes ahead, not a fixed megabyte count: episodes vary, and a
-	// fixed number either starves a large episode or wastes on a small extra.
+func backgroundFetchEnd(fileEndPiece, pieceCount int, pieceLength, fileLength int64, nextFilesEndPiece int) int {
+	// Two files ahead by index when the list resolves them, not two lengths:
+	// a 10 GB episode followed by 2 GB ones must prefetch 4 GB, not 20 GB.
 	// Clamp the file end first: a stale end past the torrent must not push
 	// the fetch out as well.
 	if fileEndPiece > pieceCount {
@@ -493,15 +493,54 @@ func backgroundFetchEnd(fileEndPiece, pieceCount int, pieceLength, fileLength in
 	if fileEndPiece < 0 {
 		fileEndPiece = 0
 	}
-	prefetchPieces := int((2 * fileLength) / pieceLength)
-	if prefetchPieces < 1 {
-		prefetchPieces = 1
+	var fetchEnd int
+	if nextFilesEndPiece > fileEndPiece {
+		fetchEnd = nextFilesEndPiece
+	} else {
+		// No file list: two lengths as the heuristic fallback.
+		fetchEnd = fileEndPiece + int((2*fileLength)/pieceLength)
+		if fetchEnd <= fileEndPiece {
+			fetchEnd = fileEndPiece + 1
+		}
 	}
-	fetchEnd := fileEndPiece + prefetchPieces
 	if fetchEnd > pieceCount {
 		fetchEnd = pieceCount
 	}
 	return fetchEnd
+}
+
+// nextTwoFilesEndPiece resolves the end of the second file after the
+// reader's own, in pieces. Returns 0 when the list is unavailable or the
+// reader's file is not found in it, and the caller falls back to the length
+// heuristic.
+func nextTwoFilesEndPiece(files []*torrent.File, cur *torrent.File, pieceLength int64) int {
+	if len(files) == 0 || cur == nil || pieceLength <= 0 {
+		return 0
+	}
+	idx := -1
+	for i, f := range files {
+		if f == cur {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		for i, f := range files {
+			if f.Offset() == cur.Offset() && f.Length() == cur.Length() {
+				idx = i
+				break
+			}
+		}
+	}
+	if idx < 0 {
+		return 0
+	}
+	last := idx + 2
+	if last >= len(files) {
+		last = len(files) - 1
+	}
+	f := files[last]
+	return int((f.Offset() + f.Length()) / pieceLength)
 }
 
 func (c *Cache) setLoadPriority(ranges []Range) {
@@ -570,7 +609,8 @@ func (c *Cache) setLoadPriority(ranges []Range) {
 			if fileEndPiece > c.pieceCount {
 				fileEndPiece = c.pieceCount
 			}
-			fetchEnd := backgroundFetchEnd(fileEndPiece, c.pieceCount, c.pieceLength, r.file.Length())
+			fetchEnd := backgroundFetchEnd(fileEndPiece, c.pieceCount, c.pieceLength, r.file.Length(),
+				nextTwoFilesEndPiece(c.torrent.Files(), r.file, c.pieceLength))
 			for i := end; i < fetchEnd && limit < count && freePieces > 0; i++ {
 				pc, ok := pieces[i]
 				if !ok || pc == nil {
