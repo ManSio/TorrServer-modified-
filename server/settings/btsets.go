@@ -127,14 +127,12 @@ type BTSets struct {
 	// that trade.
 	PausePreloadUnbounded bool `json:"PausePreloadUnbounded"`
 	// PauseFetchStagingMB caps how much unfinished download the pause fetch
-	// may hold before it stops asking for more. While paused with an unbounded
-	// window, the server keeps requesting ahead; this is the backpressure
-	// that keeps a fast swarm from piling unverified bytes into memory faster
-	// than hashing can retire them to disk.
+	// may hold before it stops asking for more. Applies in RAM mode only: in
+	// disk mode the chunks land straight in files, so there is nothing held
+	// to cap, and capping would idle the network while the disk has space.
 	//
-	// At 10 MB/s, the default 256 MB is ~25 seconds of buffer. Range
-	// 64..1024, clamped on load; 0 disables the cap (not recommended on a
-	// small box).
+	// At 10 MB/s, the default 256 MB is ~25 seconds of download. Range
+	// 64..1024, clamped on load; 0 disables the cap.
 	PauseFetchStagingMB int     `json:"PauseFetchStagingMB"`
 	PreloadCache        float64 // in percent, rounded to hundredths (0.01% - 100%)
 	PreloadCacheMB      int64   // in MB, overrides PreloadCache percent if > 0 (allows e.g. 1MB at 100GB+ cache)

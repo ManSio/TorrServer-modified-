@@ -336,13 +336,18 @@ func (t *Torrent) updateRA() {
 	paused := idleSec >= int64(settings.BTsets.PausePreloadAfterSec)
 	var adj int64
 	if settings.BTsets.PausePreloadUnbounded && paused {
-		// Backpressure: while paused the fetch never idles, but when the
-		// staging (downloaded, not yet complete) grows past the cap, stop
-		// asking for more until pieces complete and drain to disk. Without
-		// this a fast swarm piles unverified bytes into memory. The fallback
-		// is the regular bounded window, not zero, so fetching slows rather
-		// than stalls.
+		// Backpressure applies in RAM mode only. In disk mode the chunks land
+		// straight in files through pwrite, so StagedBytes counts disk bytes
+		// of incomplete pieces, not memory held: capping it would idle the
+		// network while the disk has space, which is exactly the stall this
+		// feature exists to prevent. In RAM mode the buffers really are
+		// memory, so the cap stays.
+		//
+		// Disk mode relies on two natural brakes instead: free cache space
+		// (the window below never exceeds it) and the per-connection request
+		// pipeline, which bounds in-flight regardless of window size.
 		if capMB := settings.BTsets.PauseFetchStagingMB; capMB > 0 &&
+			!settings.BTsets.UseDisk &&
 			t.cache.StagedBytes() >= int64(capMB)<<20 {
 			paused = false
 		} else {
