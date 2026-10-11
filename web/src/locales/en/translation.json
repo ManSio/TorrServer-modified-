@@ -172,6 +172,8 @@
     "AutoTuneDesc": "Size the pause buffer from RAM automatically. Turn off to set it by hand.",
   "PausePreloadUnbounded": "Download to the end on pause",
   "PausePreloadUnboundedDesc": "While paused, download to the end of the file instead of stopping at a window. Bounded by disk cache, not RAM.",
+  "StagingMB": "Pause staging cap",
+  "StagingMBDesc": "Stop asking for more while this much unfinished download is held. 0 disables the cap.",
     "RemoveCacheOnDrop": "Remove Cache from Disk on Drop Torrent",
     "RemoveCacheOnDropDesc": "If disabled, cache removed on delete torrent.",
     "RemoveRetrackers": "Remove retrackers",

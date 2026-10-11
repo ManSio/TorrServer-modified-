@@ -40,6 +40,7 @@ export default function SettingsDialog({ handleClose }) {
   const [cachePercentage, setCachePercentage] = useState(40);
   const [readAheadMB, setReadAheadMB] = useState(16);
   const [pausePreloadMB, setPausePreloadMB] = useState(1024);
+  const [stagingMB, setStagingMB] = useState(256);
   const [pausePreloadAfterSec, setPausePreloadAfterSec] = useState(10);
   const [preloadCachePercentage, setPreloadCachePercentage] = useState(0);
   const [isProMode, setIsProMode] = useState(
@@ -90,6 +91,7 @@ export default function SettingsDialog({ handleClose }) {
     sets.CacheSize = cacheSize * 1024 * 1024;
     sets.ReaderReadAHead = readAheadMB;
     sets.PausePreloadMB = pausePreloadMB;
+    sets.PauseFetchStagingMB = stagingMB;
     sets.PausePreloadAfterSec = pausePreloadAfterSec;
     sets.PreloadCache = Math.round(preloadCachePercentage * 100) / 100; // Round to hundredths
     axios.post(settingsHost(), { action: "set", sets });
@@ -139,6 +141,7 @@ export default function SettingsDialog({ handleClose }) {
     ReaderReadAHead,
     PreloadCache,
     PausePreloadMB,
+    PauseFetchStagingMB,
     PausePreloadAfterSec,
   } = settings || {};
 
@@ -149,6 +152,7 @@ export default function SettingsDialog({ handleClose }) {
     setCacheSize(CacheSize);
     setReadAheadMB(ReaderReadAHead);
     setPausePreloadMB(PausePreloadMB || 0);
+    setStagingMB(PauseFetchStagingMB || 256);
     setPausePreloadAfterSec(PausePreloadAfterSec || 0);
     setPreloadCachePercentage(PreloadCache || 0);
   }, [
@@ -156,6 +160,7 @@ export default function SettingsDialog({ handleClose }) {
     ReaderReadAHead,
     PreloadCache,
     PausePreloadMB,
+    PauseFetchStagingMB,
     PausePreloadAfterSec,
   ]);
 
@@ -259,6 +264,8 @@ export default function SettingsDialog({ handleClose }) {
                   cachePercentage={cachePercentage}
                   readAheadMB={readAheadMB}
                   pausePreloadMB={pausePreloadMB}
+                  stagingMB={stagingMB}
+                  setStagingMB={setStagingMB}
                   pausePreloadAfterSec={pausePreloadAfterSec}
                   setReadAheadMB={setReadAheadMB}
                   setPausePreloadMB={setPausePreloadMB}
@@ -338,6 +345,7 @@ export default function SettingsDialog({ handleClose }) {
             setCacheSize(defaultSettings.CacheSize / (1024 * 1024));
             setReadAheadMB(defaultSettings.ReaderReadAHead);
             setPausePreloadMB(defaultSettings.PausePreloadMB);
+            setStagingMB(defaultSettings.PauseFetchStagingMB);
             setPausePreloadAfterSec(defaultSettings.PausePreloadAfterSec);
             setPreloadCachePercentage(defaultSettings.PreloadCache);
             updateSettings(defaultSettings);

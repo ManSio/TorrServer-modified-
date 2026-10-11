@@ -649,3 +649,28 @@ func (c *Cache) GetCapacity() int64 {
 	}
 	return c.capacity
 }
+
+// StagedBytes is how much downloaded data is held in incomplete pieces:
+// chunks that arrived from the network but whose piece has not finished yet,
+// so the bytes sit in RAM-backed buffers rather than as complete, evictable
+// units on disk.
+//
+// The pause fetch uses it as backpressure: while paused it keeps requesting
+// ahead, but when the staging grows past the configured cap it stops asking
+// for more until pieces complete and drain to disk. Without that, a fast
+// swarm on pause would pile unverified data into memory faster than hashing
+// and flushing can retire it. At 10 MB/s a 256 MB cap is ~25 seconds of
+// buffer - plenty to smooth bursts, small enough to never threaten the box.
+func (c *Cache) StagedBytes() int64 {
+	if c == nil {
+		return 0
+	}
+	var staged int64
+	for _, p := range c.getPieces() {
+		if p == nil || p.Complete {
+			continue
+		}
+		staged += p.Size
+	}
+	return staged
+}

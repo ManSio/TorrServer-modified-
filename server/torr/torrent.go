@@ -336,14 +336,26 @@ func (t *Torrent) updateRA() {
 	paused := idleSec >= int64(settings.BTsets.PausePreloadAfterSec)
 	var adj int64
 	if settings.BTsets.PausePreloadUnbounded && paused {
-		free := t.cache.GetCapacity() - t.cache.GetState().Filled
-		unboundedMB := torrstor.UnboundedPauseWindowMB(
-			t.Length(),
-			free,
-			t.cache.ActiveViewerCount(),
-		)
-		adj = int64(unboundedMB) << 20
-	} else {
+		// Backpressure: while paused the fetch never idles, but when the
+		// staging (downloaded, not yet complete) grows past the cap, stop
+		// asking for more until pieces complete and drain to disk. Without
+		// this a fast swarm piles unverified bytes into memory. The fallback
+		// is the regular bounded window, not zero, so fetching slows rather
+		// than stalls.
+		if capMB := settings.BTsets.PauseFetchStagingMB; capMB > 0 &&
+			t.cache.StagedBytes() >= int64(capMB)<<20 {
+			paused = false
+		} else {
+			free := t.cache.GetCapacity() - t.cache.GetState().Filled
+			unboundedMB := torrstor.UnboundedPauseWindowMB(
+				t.Length(),
+				free,
+				t.cache.ActiveViewerCount(),
+			)
+			adj = int64(unboundedMB) << 20
+		}
+	}
+	if !settings.BTsets.PausePreloadUnbounded || !paused {
 		// AutoTune: derive the pause window from the hardware instead of the
 		// written setting. The server measures RAM and sizes the window to a
 		// safe share of it, so a small box gets a small window and a large

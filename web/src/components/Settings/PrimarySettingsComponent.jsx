@@ -39,11 +39,13 @@ export default function PrimarySettingsComponent({
   readAheadMB,
   pausePreloadMB,
   pausePreloadAfterSec,
+  stagingMB,
   setCacheSize,
   setCachePercentage,
   setReadAheadMB,
   setPausePreloadMB,
   setPausePreloadAfterSec,
+  setStagingMB,
   setPreloadCachePercentage,
   setPreloadCacheMB,
   updateSettings,
@@ -171,6 +173,18 @@ export default function PrimarySettingsComponent({
         <div>
           <small>{t("SettingsDialog.PausePreloadUnboundedDesc")}</small>
         </div>
+
+        <SliderInput
+          isProMode={isProMode}
+          title={`${t("SettingsDialog.StagingMB")} - ${stagingMB} ${t("MB")}`}
+          value={stagingMB}
+          setValue={setStagingMB}
+          sliderMin={64}
+          sliderMax={1024}
+          inputMin={0}
+          inputMax={1024}
+          step={64}
+        />
 
         <SliderInput
           isProMode={isProMode}

@@ -126,10 +126,20 @@ type BTSets struct {
 	// this can pressure RAM. Off by default; turning it on means accepting
 	// that trade.
 	PausePreloadUnbounded bool `json:"PausePreloadUnbounded"`
-	PreloadCache    float64 // in percent, rounded to hundredths (0.01% - 100%)
-	PreloadCacheMB  int64   // in MB, overrides PreloadCache percent if > 0 (allows e.g. 1MB at 100GB+ cache)
-	OneCacheForAll  bool    // limit cache globally across all torrents instead of per-torrent
-	CacheHysteresis float64 // eviction threshold (0.50-1.0), default 0.90 = clean down to 90%
+	// PauseFetchStagingMB caps how much unfinished download the pause fetch
+	// may hold before it stops asking for more. While paused with an unbounded
+	// window, the server keeps requesting ahead; this is the backpressure
+	// that keeps a fast swarm from piling unverified bytes into memory faster
+	// than hashing can retire them to disk.
+	//
+	// At 10 MB/s, the default 256 MB is ~25 seconds of buffer. Range
+	// 64..1024, clamped on load; 0 disables the cap (not recommended on a
+	// small box).
+	PauseFetchStagingMB int     `json:"PauseFetchStagingMB"`
+	PreloadCache        float64 // in percent, rounded to hundredths (0.01% - 100%)
+	PreloadCacheMB      int64   // in MB, overrides PreloadCache percent if > 0 (allows e.g. 1MB at 100GB+ cache)
+	OneCacheForAll      bool    // limit cache globally across all torrents instead of per-torrent
+	CacheHysteresis     float64 // eviction threshold (0.50-1.0), default 0.90 = clean down to 90%
 	// ReaderIdleGraceSec is how long a viewer's window stays protected from
 	// eviction after its last read. (existing) ...
 	ViewerIdleGraceSec int `json:"ViewerIdleGraceSec"`
@@ -281,6 +291,17 @@ func SetBTSets(sets *BTSets) {
 	if sets.PausePreloadAfterSec < 0 {
 		sets.PausePreloadAfterSec = 0
 	}
+	// Staging cap: 64..1024 MB. Below 64 the backpressure trips on ordinary
+	// bursts; above 1024 it stops protecting a small box. 0 disables the cap.
+	if sets.PauseFetchStagingMB < 0 {
+		sets.PauseFetchStagingMB = 0
+	}
+	if sets.PauseFetchStagingMB > 0 && sets.PauseFetchStagingMB < 64 {
+		sets.PauseFetchStagingMB = 64
+	}
+	if sets.PauseFetchStagingMB > 1024 {
+		sets.PauseFetchStagingMB = 1024
+	}
 
 	if sets.PreloadCache < 0 {
 		sets.PreloadCache = 0
@@ -358,6 +379,8 @@ func SetDefaultConfig() {
 	sets.PausePreloadAfterSec = PausePreloadAfterDefaultSec
 	// Tune from the hardware unless the user says otherwise. See AutoTune.
 	sets.AutoTune = true
+	// 256 MB of staging at 10 MB/s is ~25 seconds of buffer.
+	sets.PauseFetchStagingMB = 256
 	sets.ResponsiveMode = true
 	sets.ShowFSActiveTorr = true
 	sets.StoreSettingsInJson = true
@@ -406,6 +429,9 @@ func migrateBTSets(stored []byte, sets *BTSets) {
 	}
 	if _, ok := raw["AutoTune"]; !ok {
 		sets.AutoTune = true
+	}
+	if _, ok := raw["PauseFetchStagingMB"]; !ok {
+		sets.PauseFetchStagingMB = 256
 	}
 }
 
