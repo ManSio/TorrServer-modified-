@@ -355,6 +355,30 @@ func SetDefaultConfig() {
 	}
 }
 
+// migrateBTSets fills in defaults for settings that did not exist when a stored
+// config was written.
+//
+// A missing key is an absence and gets a default; an explicit value, including
+// an explicit zero, is a decision and is left alone. Without this the pause
+// preload would ship switched off on every install that predates it: the key
+// is absent, the field decodes to 0, and 0 means "no pause window" - an
+// upgrade that looks exactly like a feature that does nothing.
+func migrateBTSets(stored []byte, sets *BTSets) {
+	var raw map[string]json.RawMessage
+	if json.Unmarshal(stored, &raw) != nil {
+		return
+	}
+	if _, ok := raw["EnableBonjour"]; !ok {
+		sets.EnableBonjour = true
+	}
+	if _, ok := raw["PausePreloadMB"]; !ok {
+		sets.PausePreloadMB = PausePreloadDefaultMB
+	}
+	if _, ok := raw["PausePreloadAfterSec"]; !ok {
+		sets.PausePreloadAfterSec = PausePreloadAfterDefaultSec
+	}
+}
+
 func loadBTSets() {
 	buf := tdb.Get("Settings", "BitTorr")
 	if len(buf) > 0 {
@@ -385,12 +409,7 @@ func loadBTSets() {
 				}
 			}
 			// Default Bonjour on for configs that predate the setting.
-			var raw map[string]json.RawMessage
-			if json.Unmarshal(buf, &raw) == nil {
-				if _, ok := raw["EnableBonjour"]; !ok {
-					BTsets.EnableBonjour = true
-				}
-			}
+			migrateBTSets(buf, BTsets)
 			// Upgrade older configs that never had tracker list fields.
 			if BTsets.TrackersListURL == "" && BTsets.DefaultTrackers == "" {
 				BTsets.TrackersListURL = DefaultTrackersListURL
