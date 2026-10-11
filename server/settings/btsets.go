@@ -29,7 +29,11 @@ type TMDBConfig struct {
 // the cache or eviction cannot bring the cache back under its limit.
 const (
 	MinReadAheadMB = 4
-	MaxReadAheadMB = 1024
+	// 4096 MB (4 GiB) is the largest window a user may ask for. On a 98 GiB
+	// cache that is ~4%, still a small fraction, so eviction keeps working.
+	// On small machines the RAM cap trims it long before this ceiling
+	// matters: a 3.4 GiB box never sees more than ~870 MB regardless.
+	MaxReadAheadMB = 4096
 	// DefaultReadAheadMB is the *playing* window. A paused viewer gets
 	// PausePreloadDefaultMB instead — see PausePreloadMB.
 	DefaultReadAheadMB = 16

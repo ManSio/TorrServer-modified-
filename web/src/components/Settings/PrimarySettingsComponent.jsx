@@ -106,9 +106,9 @@ export default function PrimarySettingsComponent({
           value={readAheadMB}
           setValue={setReadAheadMB}
           sliderMin={4}
-          sliderMax={1024}
+          sliderMax={4096}
           inputMin={4}
-          inputMax={1024}
+          inputMax={4096}
           step={4}
         />
 
@@ -120,9 +120,9 @@ export default function PrimarySettingsComponent({
           value={pausePreloadMB}
           setValue={setPausePreloadMB}
           sliderMin={0}
-          sliderMax={1024}
+          sliderMax={4096}
           inputMin={0}
-          inputMax={1024}
+          inputMax={4096}
           step={4}
         />
 
