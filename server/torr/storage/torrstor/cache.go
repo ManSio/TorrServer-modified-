@@ -473,15 +473,18 @@ func priorityBudget(connectionsLimit, readers int) int {
 }
 
 // backgroundFetchEnd extends the background fetch past the current file's
-// end by one prefetch window, so the next episode starts instantly instead
-// of cold. 256 MB covers instant start plus buffer on any bitrate and wastes
-// nothing if the viewer stops at the credits. Files lie back to back in
-// piece space, so the pieces right past the end are the next episode's head.
+// end by two episodes ahead, so the next ones are already there when the
+// viewer moves on. Two file lengths, not a fixed megabyte count: episodes
+// vary in size, and a fixed number either starves a large episode or wastes
+// on a small extra. Files lie back to back in piece space, so the pieces
+// right past the end are the coming episodes' start, and the window simply
+// continues through them.
 //
-// Clamped to the torrent end: the prefetch must not run past the last piece.
-// Split out so the bound is testable without a cache.
-func backgroundFetchEnd(fileEndPiece, pieceCount int, pieceLength int64) int {
-	const prefetchMB = 256
+// Clamped to the torrent end and floored so a zero-length file still moves
+// one piece. Split out so the bound is testable without a cache.
+func backgroundFetchEnd(fileEndPiece, pieceCount int, pieceLength, fileLength int64) int {
+	// Two episodes ahead, not a fixed megabyte count: episodes vary, and a
+	// fixed number either starves a large episode or wastes on a small extra.
 	// Clamp the file end first: a stale end past the torrent must not push
 	// the fetch out as well.
 	if fileEndPiece > pieceCount {
@@ -490,7 +493,7 @@ func backgroundFetchEnd(fileEndPiece, pieceCount int, pieceLength int64) int {
 	if fileEndPiece < 0 {
 		fileEndPiece = 0
 	}
-	prefetchPieces := int((prefetchMB << 20) / pieceLength)
+	prefetchPieces := int((2 * fileLength) / pieceLength)
 	if prefetchPieces < 1 {
 		prefetchPieces = 1
 	}
@@ -554,17 +557,10 @@ func (c *Cache) setLoadPriority(ranges []Range) {
 		// viewers). A paused viewer is just a viewer whose window stopped
 		// moving, so this covers pause too with no special pause path.
 		//
-		// Stays inside this reader's file: a season torrent holds many
-		// episodes, but the background of episode 1 must not spill into
-		// episode 20's pieces. Without this bound a single viewer queues the
-		// whole torrent.
-		//
-		// Plus one prefetch window past the file end: the start of the next
-		// episode, so it opens instantly instead of cold. 256 MB is enough
-		// for instant start plus buffer on any bitrate, small enough to
-		// waste nothing if the viewer stops at the credits. Files lie back
-		// to back in piece space, so the pieces right past the end are the
-		// next episode's head (padding edge cases just fetch nothing).
+		// Reaches two episodes past this reader's file end, so the next ones
+		// are already there. Bounded by the same budget and free space as
+		// the rest of the background: prefetching never crowds out the
+		// window or other viewers.
 		if settings.BTsets.BackgroundFetch {
 			freePieces := int((c.capacity - c.filledSize.Load()) / c.pieceLength / int64(len(readers)))
 			if freePieces < 0 {
@@ -574,7 +570,7 @@ func (c *Cache) setLoadPriority(ranges []Range) {
 			if fileEndPiece > c.pieceCount {
 				fileEndPiece = c.pieceCount
 			}
-			fetchEnd := backgroundFetchEnd(fileEndPiece, c.pieceCount, c.pieceLength)
+			fetchEnd := backgroundFetchEnd(fileEndPiece, c.pieceCount, c.pieceLength, r.file.Length())
 			for i := end; i < fetchEnd && limit < count && freePieces > 0; i++ {
 				pc, ok := pieces[i]
 				if !ok || pc == nil {
