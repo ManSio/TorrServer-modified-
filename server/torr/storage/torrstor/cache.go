@@ -509,38 +509,56 @@ func backgroundFetchEnd(fileEndPiece, pieceCount int, pieceLength, fileLength in
 	return fetchEnd
 }
 
+// fileSpan is a torrent file reduced to what the prefetch bound needs. Kept
+// separate from torrent.File because its offset/length are unexported, so a
+// function taking []*torrent.File cannot be built in a test at all.
+type fileSpan struct {
+	offset int64
+	length int64
+}
+
+// torrentFileSpans projects a torrent's file list onto fileSpan.
+func torrentFileSpans(files []*torrent.File) []fileSpan {
+	if len(files) == 0 {
+		return nil
+	}
+	out := make([]fileSpan, len(files))
+	for i, f := range files {
+		if f != nil {
+			out[i] = fileSpan{offset: f.Offset(), length: f.Length()}
+		}
+	}
+	return out
+}
+
 // nextTwoFilesEndPiece resolves the end of the second file after the
 // reader's own, in pieces. Returns 0 when the list is unavailable or the
 // reader's file is not found in it, and the caller falls back to the length
 // heuristic.
-func nextTwoFilesEndPiece(files []*torrent.File, cur *torrent.File, pieceLength int64) int {
-	if len(files) == 0 || cur == nil || pieceLength <= 0 {
+//
+// The current file is matched by offset+length rather than by identity:
+// callers reach it through a reader, so the pointer is not guaranteed to be
+// the same *torrent.File the list holds.
+func nextTwoFilesEndPiece(spans []fileSpan, curOffset, curLength, pieceLength int64) int {
+	if len(spans) == 0 || pieceLength <= 0 {
 		return 0
 	}
 	idx := -1
-	for i, f := range files {
-		if f == cur {
+	for i, s := range spans {
+		if s.offset == curOffset && s.length == curLength {
 			idx = i
 			break
-		}
-	}
-	if idx < 0 {
-		for i, f := range files {
-			if f.Offset() == cur.Offset() && f.Length() == cur.Length() {
-				idx = i
-				break
-			}
 		}
 	}
 	if idx < 0 {
 		return 0
 	}
 	last := idx + 2
-	if last >= len(files) {
-		last = len(files) - 1
+	if last >= len(spans) {
+		last = len(spans) - 1
 	}
-	f := files[last]
-	return int((f.Offset() + f.Length()) / pieceLength)
+	s := spans[last]
+	return int((s.offset + s.length) / pieceLength)
 }
 
 func (c *Cache) setLoadPriority(ranges []Range) {
@@ -610,7 +628,8 @@ func (c *Cache) setLoadPriority(ranges []Range) {
 				fileEndPiece = c.pieceCount
 			}
 			fetchEnd := backgroundFetchEnd(fileEndPiece, c.pieceCount, c.pieceLength, r.file.Length(),
-				nextTwoFilesEndPiece(c.torrent.Files(), r.file, c.pieceLength))
+				nextTwoFilesEndPiece(torrentFileSpans(c.torrent.Files()),
+					r.file.Offset(), r.file.Length(), c.pieceLength))
 			for i := end; i < fetchEnd && limit < count && freePieces > 0; i++ {
 				pc, ok := pieces[i]
 				if !ok || pc == nil {
