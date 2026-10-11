@@ -153,6 +153,15 @@ type BTSets struct {
 	ConnectionsLimit  int
 	PeersListenPort   int
 
+	// DisableEncrypt refuses the RC4 stream encryption peers ask for. It was
+	// 17-19% of process CPU while downloading (crypto/rc4.XORKeyStream in the
+	// production profile) purely because anacrolix accepts encryption whenever
+	// a peer offers it. The trade is that an ISP can shape the traffic, which
+	// matters for a desktop client and not for a LAN media server.
+	//
+	// ForceEncrypt wins if both are set: they contradict each other.
+	DisableEncrypt bool
+
 	// LPD
 	EnableLPD bool
 	LPDIPv6   bool

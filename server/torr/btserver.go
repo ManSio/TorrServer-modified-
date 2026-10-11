@@ -122,10 +122,12 @@ func (bt *BTServer) configure(ctx context.Context) {
 	bt.config.ExtendedHandshakeClientVersion = cliVers
 	bt.config.EstablishedConnsPerTorrent = settings.BTsets.ConnectionsLimit
 	bt.config.TotalHalfOpenConns = 500
-	// Encryption/Obfuscation
-	bt.config.EncryptionPolicy = torrent.EncryptionPolicy{ //	OE
-		ForceEncryption: settings.BTsets.ForceEncrypt, //	OE
-	} //	OE
+	// RC4 stream encryption is negotiated per connection even when it is not
+	// forced, and while downloading it was 17-19% of process CPU (measured:
+	// crypto/rc4.XORKeyStream, two profiles on separate torrents). It only
+	// hides BitTorrent traffic from an ISP's shaping, which matters for a
+	// client and not for a LAN media server, so it can be refused outright.
+	bt.config.EncryptionPolicy = encryptionPolicy(settings.BTsets.ForceEncrypt, settings.BTsets.DisableEncrypt)
 	// bt.config.HeaderObfuscationPolicy = torrent.HeaderObfuscationPolicy{ //	NE
 	// 	RequirePreferred: settings.BTsets.ForceEncrypt, //	NE
 	// 	Preferred:        true,                         //	NE
@@ -195,6 +197,20 @@ func (bt *BTServer) configure(ctx context.Context) {
 	}
 	if bt.config.PublicIp6 != nil {
 		log.Println("PublicIp6:", bt.config.PublicIp6)
+	}
+}
+
+// encryptionPolicy resolves the two contradicting encryption settings into one
+// anacrolix policy. Split out of configure so the rule can be tested without a
+// BT client.
+//
+// ForceEncrypt wins over DisableEncrypt: if both were honoured the policy
+// would be self-contradictory, and picking one silently would make the other
+// setting a lie in the UI.
+func encryptionPolicy(force, disable bool) torrent.EncryptionPolicy {
+	return torrent.EncryptionPolicy{
+		DisableEncryption: disable,
+		ForceEncryption:   force && !disable,
 	}
 }
 
