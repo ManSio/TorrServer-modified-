@@ -451,6 +451,27 @@ func (c *Cache) getRemPieces() []*Piece {
 	return piecesRemove
 }
 
+// priorityBudget is how many pieces each reader may mark for loading.
+//
+// It divides the connection limit between active readers, but never below one.
+// With more viewers than the limit allows, plain division goes to zero or
+// negative, the assignment loop never runs, and no piece gets a priority at
+// all - a silent stall with peers connected. One piece keeps every viewer
+// moving, however slowly.
+//
+// Split out from setLoadPriority so the arithmetic is testable without a
+// cache, the same reason readAheadBytes is separate in the torr package.
+func priorityBudget(connectionsLimit, readers int) int {
+	if readers <= 0 {
+		return connectionsLimit
+	}
+	budget := connectionsLimit / readers
+	if budget < 1 {
+		return 1
+	}
+	return budget
+}
+
 func (c *Cache) setLoadPriority(ranges []Range) {
 	readers := c.readersSnapshot()
 	pieces := c.getPieces()
@@ -475,7 +496,7 @@ func (c *Cache) setLoadPriority(ranges []Range) {
 		if end > c.pieceCount {
 			end = c.pieceCount
 		}
-		count := settings.BTsets.ConnectionsLimit / len(readers) // max concurrent loading blocks
+		count := priorityBudget(settings.BTsets.ConnectionsLimit, len(readers))
 		limit := 0
 		for i := readerPos; i < end && limit < count; i++ {
 			pc, ok := pieces[i]
