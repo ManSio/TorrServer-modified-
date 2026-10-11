@@ -351,9 +351,18 @@ func (t *Torrent) updateRA() {
 			t.cache.StagedBytes() >= int64(capMB)<<20 {
 			paused = false
 		} else {
+			// Bound by the watched files, not the whole torrent: a season
+			// holds many episodes, but pausing episode 1 must not queue all
+			// 79 GB. WatchedFileEndBytes is the furthest byte anyone watches;
+			// fall back to the torrent length only when no reader tells us
+			// better (no active viewers yet).
+			fileEnd := t.cache.WatchedFileEndBytes()
+			if fileEnd <= 0 {
+				fileEnd = t.Length()
+			}
 			free := t.cache.GetCapacity() - t.cache.GetState().Filled
 			unboundedMB := torrstor.UnboundedPauseWindowMB(
-				t.Length(),
+				fileEnd,
 				free,
 				t.cache.ActiveViewerCount(),
 			)

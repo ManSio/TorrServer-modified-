@@ -524,12 +524,21 @@ func (c *Cache) setLoadPriority(ranges []Range) {
 		// out anyone's window) and by the same budget (never crowds out other
 		// viewers). A paused viewer is just a viewer whose window stopped
 		// moving, so this covers pause too with no special pause path.
+		//
+		// Stays inside this reader's file: a season torrent holds many
+		// episodes, but the background of episode 1 must not spill into
+		// episode 20's pieces. Without this bound a single viewer queues the
+		// whole torrent.
 		if settings.BTsets.BackgroundFetch {
 			freePieces := int((c.capacity - c.filledSize.Load()) / c.pieceLength / int64(len(readers)))
 			if freePieces < 0 {
 				freePieces = 0
 			}
-			for i := end; i < c.pieceCount && limit < count && freePieces > 0; i++ {
+			fileEndPiece := int((r.file.Offset() + r.file.Length()) / c.pieceLength)
+			if fileEndPiece > c.pieceCount {
+				fileEndPiece = c.pieceCount
+			}
+			for i := end; i < fileEndPiece && limit < count && freePieces > 0; i++ {
 				pc, ok := pieces[i]
 				if !ok || pc == nil {
 					continue
@@ -673,6 +682,31 @@ func (c *Cache) GetCapacity() int64 {
 		return 0
 	}
 	return c.capacity
+}
+
+// WatchedFileEndBytes is the furthest byte any active viewer can reach: the
+// end of the latest file anyone is watching. A series torrent holds many
+// files, but only the watched ones need data; everything past this point
+// belongs to episodes nobody opened.
+//
+// The read window already respects file ends (getOffsetRange clamps there),
+// but the pause-unbounded path and the background fetch were bounded by the
+// whole torrent instead - so pausing episode 1 queued all 79 GB of the
+// season. This is the bound they should have used.
+func (c *Cache) WatchedFileEndBytes() int64 {
+	if c == nil {
+		return 0
+	}
+	var furthest int64
+	for _, r := range c.readersSnapshot() {
+		if !r.isUse || r.file == nil {
+			continue
+		}
+		if end := r.file.Offset() + r.file.Length(); end > furthest {
+			furthest = end
+		}
+	}
+	return furthest
 }
 
 // StagedBytes is how much downloaded data is held in incomplete pieces:
