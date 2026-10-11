@@ -5,6 +5,52 @@ import (
 	"testing"
 )
 
+// A stored config from before AutoTune has no key for it, and the zero value
+// of a bool is false. Upgrading without the migration would therefore switch
+// every existing install to manual mode with whatever numbers happen to be
+// stored - the opposite of the shipped behaviour. The migration keeps new
+// installs and old installs on the same default.
+func TestAutoTuneMigratesConfigsThatPredateIt(t *testing.T) {
+	stored, err := json.Marshal(map[string]any{
+		"ReaderReadAHead": 90,
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	got := new(BTSets)
+	if err := json.Unmarshal(stored, got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	migrateBTSets(stored, got)
+
+	if !got.AutoTune {
+		t.Error("config without the key loaded AutoTune=false, want the default true")
+	}
+}
+
+// An explicit false is a decision to tune by hand. Only a missing key may be
+// filled in.
+func TestAutoTuneKeepsAnExplicitFalse(t *testing.T) {
+	stored, err := json.Marshal(map[string]any{
+		"ReaderReadAHead": 90,
+		"AutoTune":        false,
+	})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	got := new(BTSets)
+	if err := json.Unmarshal(stored, got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	migrateBTSets(stored, got)
+
+	if got.AutoTune {
+		t.Error("explicit AutoTune=false was overwritten with true")
+	}
+}
+
 // An existing install has no PausePreloadMB key in its stored JSON, so the
 // field decodes to 0 - and 0 means "no pause window". Upgrading without the
 // migration therefore ships the feature switched off on every server that was
