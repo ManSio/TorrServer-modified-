@@ -81,14 +81,29 @@ func NumberPrefix(str string) (int, error) {
 }
 
 func CompareStrings(first, second string) bool {
-	commonPrefix := CommonPrefix(first, second)
-	resultStr1 := strings.TrimPrefix(first, commonPrefix)
-	resultStr2 := strings.TrimPrefix(second, commonPrefix)
+	// The common prefix can end inside a number — "Episode 1" and "Episode 10"
+	// share it. Trimming there left ".mp4" against "0.mp4", and the side that
+	// started with a digit won, so every episode from 10 onwards sorted ahead
+	// of 1 and a player walking the list started in the middle. Step the cut
+	// back to the first digit of the number it lands in, so 1 is compared with
+	// 10 rather than with the tail of 10.
+	prefixLen := len(CommonPrefix(first, second))
+	for prefixLen > 0 && unicode.IsDigit(rune(first[prefixLen-1])) {
+		prefixLen--
+	}
+	resultStr1 := first[prefixLen:]
+	resultStr2 := second[prefixLen:]
 	num1, err1 := NumberPrefix(resultStr1)
 	num2, err2 := NumberPrefix(resultStr2)
 
 	if err1 == nil && err2 == nil {
-		return num1 < num2
+		if num1 != num2 {
+			return num1 < num2
+		}
+		// Same number ("1a" and "1b"): fall back to a plain compare so the
+		// ordering stays total, which is what sort.Slice needs of a
+		// comparator — claiming both are less than each other panics it.
+		return resultStr1 < resultStr2
 	}
 	if err1 == nil {
 		return true
