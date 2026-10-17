@@ -157,3 +157,28 @@ torznab UA подтверждён: old = `Go-http-client/1.1`, path `/api/api`; 
 сортирует копию `Files`, а не сам слайс торрента — отдельная задача.
 **Предсуществующее (не связано):** `go test ./...` — `server/rutor` FAIL: `mem_test.go` открывает
 `rutor.ls`, которого нет в репозитории (фикстура не трекается).
+
+## KI-008: Холодный старт DHT — первый announce новой раздачи на пустой таблице ждёт 5 мин (issue #922) (2026-10-17)
+**Status:** 🟡 Код готов + проверен, бинарь собран (`91d925fa…`), **НЕ развёрнут на прод**
+**Source:** https://github.com/YouROK/TorrServer/issues/922 (наш комментарий:
+https://github.com/YouROK/TorrServer/issues/922#issuecomment-6232150358)
+**Files:** движок — форк `github.com/ManSio/torrent` (ветка `fix/dht-announce-retry`, тег
+`v1.2.29-mansio.1`): `torrent.go` (`announceToDht`, `dhtAnnouncer`, `nextDhtAnnounceInterval`);
+`server/go.mod` (replace `anacrolix/torrent => ManSio/torrent v1.2.29-mansio.1`)
+**Root Cause:** `announceToDht` держал фиксированные `time.After(5 * time.Minute)` и игнорировал
+`done` обхода. Обход, стартовавший по пустой таблице DHT (`go s.Bootstrap()` асинхронен), мог
+вернуться без пиров — и торрент висел до следующего анонса через 5 мин. Применимо к bare-hash
+раздачам без трекеров; у нас смягчено `RetrackersMode=1` + `DefaultTrackers` + `TrackersListURL`.
+Апстрим `tsynik/torrent@master` НЕ исправлен (проверено 2026-10-17) — бамп движка не помогает.
+**Fix (вариант 1 из issue):** `announceToDht` возвращается по `done`; пейсинг перенесён в
+`dhtAnnouncer` — 15 s пока нет пиров, удвоение до регулярных 5 мин, сброс на 5 мин при появлении
+пира. Сверх 5 мин цикл не выходит (hop − chatter bound).
+**Проверка (§19.12 two-commit):** поведенческий тест (stub `DhtServer`, обход мгновенно с нулём
+пиров): old v1.2.29 → `announceToDht blocked for 5m0.0004476s` FAIL (300.01s); new →
+`PASS (0.01s)`. Интервалы — `TestNextDhtAnnounceInterval` (6 кейсов, вкл. healthy-контроль).
+TorrServer: build ok, `go test ./torr/... ./torznab/...` зелёные.
+**Не проверено:** в живой сети (нужен публичный рой UDP наружу) — только поведенческий тест и
+чтение кода. Deploy не делался. `-race` недоступен локально (нет gcc).
+**Guard:** форк-тег пиннит патч; при обновлении движка сверить, что `announceToDht` не переписан.
+**Timeline:** T+0 не развёрнуто; T+30d — сверить с ответом в #922; T+180d — предложить PR в
+`tsynik/torrent` или откатить replace.
