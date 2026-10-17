@@ -159,14 +159,16 @@ torznab UA подтверждён: old = `Go-http-client/1.1`, path `/api/api`; 
 `rutor.ls`, которого нет в репозитории (фикстура не трекается).
 
 ## KI-008: Холодный старт DHT — первый announce новой раздачи на пустой таблице ждёт 5 мин (issue #922) (2026-10-17)
-**Status:** 🟢 Развёрнуто на 192.168.2.6 2026-10-17 12:18 +03 (sha `91d925fa…`; бэкап
-`/opt/torrserver/TorrServer.bak-20261017-121753` = прежний `02d3cbb3…`; сервис `active`,
-`/stat` 200, `journalctl -p err` пусто, 0 panic; откат: `sudo mv TorrServer.bak-20261017-121753 TorrServer && sudo systemctl restart torrserver`)
-**Source:** https://github.com/YouROK/TorrServer/issues/922 (наш комментарий:
-https://github.com/YouROK/TorrServer/issues/922#issuecomment-6232150358)
-**Files:** движок — форк `github.com/ManSio/torrent` (ветка `fix/dht-announce-retry`, тег
-`v1.2.29-mansio.1`): `torrent.go` (`announceToDht`, `dhtAnnouncer`, `nextDhtAnnounceInterval`);
-`server/go.mod` (replace `anacrolix/torrent => ManSio/torrent v1.2.29-mansio.1`)
+**Status:** 🟢 Развёрнуто на 192.168.2.6 2026-10-17 14:07 +03 (sha `550ea84b…`, база движка v1.2.32; бэкап
+`/opt/torrserver/TorrServer.bak-20261017-140710` = прежний `91d925fa…` (v1.2.29-база); сервис `active`,
+`/stat` 200, `journalctl -p err` пусто, 0 panic; откат: `sudo mv TorrServer.bak-20261017-140710 TorrServer && sudo systemctl restart torrserver`)
+**Source:** https://github.com/YouROK/TorrServer/issues/922 — наш комментарий (`#issuecomment-6232150358`)
+исчез (API 404, нет в repo-wide); повторно не постили.
+**PR:** https://github.com/tsynik/torrent/pull/11 (base `master` == тег v1.2.32, head `ManSio:fix/cold-start-dht-announce`).
+**Files:** движок — форк `github.com/ManSio/torrent` (ветка `fix/cold-start-dht-announce`, тег
+`v1.2.32-mansio.1`, commit `f5b56bf`): `torrent.go` (`announceToDht`, `dhtAnnouncer`,
+`nextDhtAnnounceInterval`), `dht_announce_test.go`; `server/go.mod` (replace
+`anacrolix/torrent => ManSio/torrent v1.2.32-mansio.1`)
 **Root Cause:** `announceToDht` держал фиксированные `time.After(5 * time.Minute)` и игнорировал
 `done` обхода. Обход, стартовавший по пустой таблице DHT (`go s.Bootstrap()` асинхронен), мог
 вернуться без пиров — и торрент висел до следующего анонса через 5 мин. Применимо к bare-hash
@@ -175,12 +177,13 @@ https://github.com/YouROK/TorrServer/issues/922#issuecomment-6232150358)
 **Fix (вариант 1 из issue):** `announceToDht` возвращается по `done`; пейсинг перенесён в
 `dhtAnnouncer` — 15 s пока нет пиров, удвоение до регулярных 5 мин, сброс на 5 мин при появлении
 пира. Сверх 5 мин цикл не выходит (hop − chatter bound).
-**Проверка (§19.12 two-commit):** поведенческий тест (stub `DhtServer`, обход мгновенно с нулём
-пиров): old v1.2.29 → `announceToDht blocked for 5m0.0004476s` FAIL (300.01s); new →
-`PASS (0.01s)`. Интервалы — `TestNextDhtAnnounceInterval` (6 кейсов, вкл. healthy-контроль).
-TorrServer: build ok, `go test ./torr/... ./torznab/...` зелёные.
+**Проверка (§19.12 two-commit, база v1.2.32):** поведенческий тест (stub `DhtServer`, обход
+мгновенно с нулём пиров): чистая v1.2.32 → `announceToDht blocked for 5m0.0002788s` FAIL (300.00s);
+ветка PR → `PASS (0.00s)`. Интервалы — `TestNextDhtAnnounceInterval` (6 кейсов, вкл. healthy-контроль).
+TorrServer: build linux/amd64 ok (61 202 592 Б, sha256 `550ea84b…`), `go test ./torr/... ./torznab/...` зелёные.
 **Не проверено:** в живой сети (нужен публичный рой UDP наружу) — только поведенческий тест и
-чтение кода. `-race` недоступен локально (нет gcc). Развёрнуто 2026-10-17 12:18 (см. Status).
-**Guard:** форк-тег пиннит патч; при обновлении движка сверить, что `announceToDht` не переписан.
-**Timeline:** T+0 ✅ развёрнуто (2026-10-17 12:18); T+30d — сверить с ответом в #922; T+180d —
-предложить PR в `tsynik/torrent` или откатить replace.
+чтение кода. `-race` недоступен локально (нет gcc).
+**Guard:** форк-тег пиннит патч; при обновлении движка сверить, что `announceToDht` не переписан
+(если PR #11 будет принят — снять replace).
+**Timeline:** T+0 ✅ развёрнуто (2026-10-17 14:07); T+30d — сверить статус PR #11 и ответ в #922;
+T+180d — пересмотреть пин/replace по факту мерджа PR.
