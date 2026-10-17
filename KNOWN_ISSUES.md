@@ -159,7 +159,9 @@ torznab UA подтверждён: old = `Go-http-client/1.1`, path `/api/api`; 
 `rutor.ls`, которого нет в репозитории (фикстура не трекается).
 
 ## KI-008: Холодный старт DHT — первый announce новой раздачи на пустой таблице ждёт 5 мин (issue #922) (2026-10-17)
-**Status:** 🟡 Код готов + проверен, бинарь собран (`91d925fa…`), **НЕ развёрнут на прод**
+**Status:** 🟢 Развёрнуто на 192.168.2.6 2026-10-17 12:18 +03 (sha `91d925fa…`; бэкап
+`/opt/torrserver/TorrServer.bak-20261017-121753` = прежний `02d3cbb3…`; сервис `active`,
+`/stat` 200, `journalctl -p err` пусто, 0 panic; откат: `sudo mv TorrServer.bak-20261017-121753 TorrServer && sudo systemctl restart torrserver`)
 **Source:** https://github.com/YouROK/TorrServer/issues/922 (наш комментарий:
 https://github.com/YouROK/TorrServer/issues/922#issuecomment-6232150358)
 **Files:** движок — форк `github.com/ManSio/torrent` (ветка `fix/dht-announce-retry`, тег
@@ -178,7 +180,7 @@ https://github.com/YouROK/TorrServer/issues/922#issuecomment-6232150358)
 `PASS (0.01s)`. Интервалы — `TestNextDhtAnnounceInterval` (6 кейсов, вкл. healthy-контроль).
 TorrServer: build ok, `go test ./torr/... ./torznab/...` зелёные.
 **Не проверено:** в живой сети (нужен публичный рой UDP наружу) — только поведенческий тест и
-чтение кода. Deploy не делался. `-race` недоступен локально (нет gcc).
+чтение кода. `-race` недоступен локально (нет gcc). Развёрнуто 2026-10-17 12:18 (см. Status).
 **Guard:** форк-тег пиннит патч; при обновлении движка сверить, что `announceToDht` не переписан.
-**Timeline:** T+0 не развёрнуто; T+30d — сверить с ответом в #922; T+180d — предложить PR в
-`tsynik/torrent` или откатить replace.
+**Timeline:** T+0 ✅ развёрнуто (2026-10-17 12:18); T+30d — сверить с ответом в #922; T+180d —
+предложить PR в `tsynik/torrent` или откатить replace.
