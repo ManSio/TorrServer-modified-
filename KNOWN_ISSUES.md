@@ -134,3 +134,26 @@ PASS. Deadlock-проба чувствительна к таймингу под 
 поэтому `r.offset` (окно защиты) уходит вперёд до 1 MiB за фактически переданным клиенту байтом.
 Для окна 90 МиБ и кэша 88 ГиБ потеря — 1%, принята; на стенде 1 ГиБ перепроверяется при следующем
 замере. Коммиты `aaed3654` + `f516a84b` локальны, **прод-бинарь не обновлён** (3aa5ccef).
+
+## KI-007: Бэкпорт трёх апстрим-фиксов — preload nil, stream 404/503, torznab URL+UA (2026-10-17) — РАЗВЁРНУТО
+**Status:** 🟢 Развёрнуто на 192.168.2.6 2026-10-17 11:36 +03 (sha `02d3cbb3…`; бэкап
+`/opt/torrserver/TorrServer.bak-20261017-113616` = прежний `bf88f13c…`; сервис `active`, `/stat` 200, `journalctl -p err` пусто)
+**Files:** `torr/preload.go`, `torr/stream.go`, `torznab/torznab.go` + тесты
+**1. Preload vs drop (апстрим `c3a0642e`, issue #916):** `drop()` обнуляет `t.Torrent`, оставляя
+`Stat`; `Preload` проверял только `Stat` и падал на `t.Files()[0]` — `index out of range [0]`.
+Фикс: снапшот `torrent := t.Torrent` под `muTorrent` + ранний выход при `t.Torrent == nil`; снапшот
+используется везде (частая ошибка — только nil-проверка; между проверкой и `t.Files()` `drop()`
+успевает обнулить — TOCTOU).
+**2. Пустой 200 при сбое стрима (апстрим `ef4e461d`, PR #845):** `Stream` возвращал ошибку без
+записи ответа → gin слал `200 OK` с пустым телом, плеер читал как файл нулевой длины. Фикс:
+`http.Error` 404 (файл не найден) / 503 (reader не создан).
+**3. Torznab URL + UA (апстрим `74e65fb2`, PR #919):** хост, заканчивающийся на `/api`, превращался
+в `/api/api`; без User-Agent индексеры за WAF отдают 403. Фикс: `buildAPIURL` нормализует хост,
+`httpGet` шлёт `User-Agent: TorrServer-Torznab/<ver>`.
+**Проверка (two-commit, §19.12):** каждый фикс — тест красный на старом коде, зелёный на новом
+(`preload_nil_test.go`, `stream_status_test.go`, `torznab_backport_test.go`, `torznab_url_test.go`);
+torznab UA подтверждён: old = `Go-http-client/1.1`, path `/api/api`; new = `TorrServer-Torznab/MatriX.144`, path `/api`.
+**Не портировано из того же `ef4e461d`:** race-фиксы GotInfo под локом, `expiredTime`, `Status`
+сортирует копию `Files`, а не сам слайс торрента — отдельная задача.
+**Предсуществующее (не связано):** `go test ./...` — `server/rutor` FAIL: `mem_test.go` открывает
+`rutor.ls`, которого нет в репозитории (фикстура не трекается).
