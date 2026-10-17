@@ -32,11 +32,14 @@ func (t *Torrent) Preload(index int, size int64) {
 	}
 
 	t.muTorrent.Lock()
-	if t.Stat != state.TorrentWorking {
+	if t.Stat != state.TorrentWorking || t.Torrent == nil {
 		t.muTorrent.Unlock()
 		return
 	}
-
+	// drop() ("drop all torrents" in SetSettings, and Close) sets t.Torrent to nil
+	// at any moment and leaves Stat untouched. Keep a snapshot: it stays valid
+	// after the drop, so this goroutine never dereferences a nil *torrent.Torrent.
+	torrent := t.Torrent
 	t.Stat = state.TorrentPreload
 	t.muTorrent.Unlock()
 
@@ -51,16 +54,16 @@ func (t *Torrent) Preload(index int, size int64) {
 		t.DurationSeconds = 0
 	}()
 
-	file := t.findFileIndex(index)
+	file := t.findFileIndex(torrent, index)
 	if file == nil {
-		file = t.Files()[0]
+		file = torrent.Files()[0]
 	}
 
 	if size > file.Length() {
 		size = file.Length()
 	}
 
-	if t.Info() == nil {
+	if torrent.Info() == nil {
 		return
 	}
 
@@ -89,13 +92,14 @@ func (t *Torrent) Preload(index int, size int64) {
 					return
 				}
 
+				st := torrent.Stats()
 				statStr := fmt.Sprint(file.Torrent().InfoHash().HexString(), " ",
 					utils2.Format(float64(t.PreloadedBytes)), "/",
 					utils2.Format(float64(t.PreloadSize)), " Speed:",
 					utils2.Format(t.DownloadSpeed), " Peers:",
-					t.Torrent.Stats().ActivePeers, "/",
-					t.Torrent.Stats().TotalPeers, " [Seeds:",
-					t.Torrent.Stats().ConnectedSeeders, "]")
+					st.ActivePeers, "/",
+					st.TotalPeers, " [Seeds:",
+					st.ConnectedSeeders, "]")
 				log.TLogln("Preload:", statStr)
 				t.AddExpiredTime(timeout)
 			case <-stopChan:
@@ -105,9 +109,9 @@ func (t *Torrent) Preload(index int, size int64) {
 	}(logStopChan)
 
 	if ffprobe.Exists() {
-		link := "http://127.0.0.1:" + settings.Port + "/play/" + t.Hash().HexString() + "/" + strconv.Itoa(index)
+		link := "http://127.0.0.1:" + settings.Port + "/play/" + torrent.InfoHash().HexString() + "/" + strconv.Itoa(index)
 		if settings.Ssl {
-			link = "https://127.0.0.1:" + settings.SslPort + "/play/" + t.Hash().HexString() + "/" + strconv.Itoa(index)
+			link = "https://127.0.0.1:" + settings.SslPort + "/play/" + torrent.InfoHash().HexString() + "/" + strconv.Itoa(index)
 		}
 		if data, err := ffprobe.ProbeUrl(link); err == nil {
 			t.BitRate = data.Format.BitRate
@@ -126,7 +130,7 @@ func (t *Torrent) Preload(index int, size int64) {
 	}
 
 	// startend -> 8/16 MB
-	startend := t.Info().PieceLength
+	startend := torrent.Info().PieceLength
 	if startend < 8<<20 {
 		startend = 8 << 20
 	}
@@ -216,7 +220,7 @@ func (t *Torrent) Preload(index int, size int64) {
 	}
 
 	// Main preload section
-	pieceLength := t.Info().PieceLength
+	pieceLength := torrent.Info().PieceLength
 	readahead := pieceLength * 4
 	if readerStartEnd < readahead {
 		readahead = 0
@@ -265,14 +269,15 @@ func (t *Torrent) Preload(index int, size int64) {
 	t.muTorrent.Unlock()
 
 	if finalStat == state.TorrentPreload {
+		st := torrent.Stats()
 		log.TLogln("End preload:", file.Torrent().InfoHash().HexString(),
-			"Peers:", t.Torrent.Stats().ActivePeers, "/",
-			t.Torrent.Stats().TotalPeers, "[ Seeds:",
-			t.Torrent.Stats().ConnectedSeeders, "]")
+			"Peers:", st.ActivePeers, "/",
+			st.TotalPeers, "[ Seeds:",
+			st.ConnectedSeeders, "]")
 	}
 }
 
-func (t *Torrent) findFileIndex(index int) *torrent.File {
+func (t *Torrent) findFileIndex(torrent *torrent.Torrent, index int) *torrent.File {
 	st := t.Status()
 	var stFile *state.TorrentFileStat
 	for _, f := range st.FileStats {
@@ -284,7 +289,7 @@ func (t *Torrent) findFileIndex(index int) *torrent.File {
 	if stFile == nil {
 		return nil
 	}
-	for _, file := range t.Files() {
+	for _, file := range torrent.Files() {
 		if file.Path() == stFile.Path {
 			return file
 		}
