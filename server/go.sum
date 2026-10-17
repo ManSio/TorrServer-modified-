@@ -63,8 +63,8 @@ github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym
 github.com/DataDog/datadog-go v3.2.0+incompatible/go.mod h1:LButxg5PwREeZtORoXG3tL4fMGNddJ+vMq1mwgfaqoQ=
 github.com/KyleBanks/depth v1.2.1 h1:5h8fQADFrWtarTdtDudMmGsC7GPbOAu6RVB3ffsVFHc=
 github.com/KyleBanks/depth v1.2.1/go.mod h1:jzSb9d0L43HxTQfT+oSA1EEp2q+ne2uh6XgeJcm8brE=
-github.com/ManSio/torrent v1.2.29-mansio.1 h1:Jmt5HnI92q+t/ury/xuLMeNWq5KIDZszuSbLlT4RZlA=
-github.com/ManSio/torrent v1.2.29-mansio.1/go.mod h1:yz3J10YJmUfiFfylHgIzr9cuhmXHHmf5xsHDgsqEnFg=
+github.com/ManSio/torrent v1.2.32-mansio.1 h1:8Kt3ot0VDKsI3r+JqlCkRxV73zq0F6pp5QWTegWfQ5c=
+github.com/ManSio/torrent v1.2.32-mansio.1/go.mod h1:yz3J10YJmUfiFfylHgIzr9cuhmXHHmf5xsHDgsqEnFg=
 github.com/OneOfOne/xxhash v1.2.2/go.mod h1:HSdplMjZKSmBqAxg5vPj2TmRDmfkzw+cTzAElWljhcU=
 github.com/RoaringBitmap/roaring v0.4.7/go.mod h1:8khRDP4HmeXns4xIj9oGrKSz7XTQiJx2zgh7AcNke4w=
 github.com/RoaringBitmap/roaring v0.4.17/go.mod h1:D3qVegWTmfCaX4Bl5CrBE9hfrSrrXIr8KVNvRsDi1NI=
