@@ -12,6 +12,7 @@ import (
 	"server/log"
 	"server/rutor/models"
 	"server/settings"
+	"server/version"
 )
 
 type TorznabAttribute struct {
@@ -44,6 +45,30 @@ type TorznabResponse struct {
 	Channel TorznabChannel `xml:"channel"`
 }
 
+// httpGet performs a GET request with a browser-like User-Agent: some Torznab
+// indexers (e.g. behind a WAF) answer 403 without one.
+func httpGet(u string) (*http.Response, error) {
+	req, err := http.NewRequest(http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "TorrServer-Torznab/"+version.Version)
+	return http.DefaultClient.Do(req)
+}
+
+// buildAPIURL normalizes a Torznab host and returns the parsed URL pointing to
+// the "api" endpoint. It accepts hosts with and without a trailing "/api" or
+// "/api/" segment, so a configured host that already carries "/api" does not
+// end up as "/api/api".
+func buildAPIURL(host string) (*url.URL, error) {
+	host = strings.TrimSpace(host)
+	host = strings.TrimRight(host, "/")
+	host = strings.TrimSuffix(host, "/api")
+	host = strings.TrimRight(host, "/")
+
+	return url.Parse(host + "/api")
+}
+
 func Search(query string, index int) []*models.TorrentDetails {
 	if !settings.BTsets.EnableTorznabSearch || len(settings.BTsets.TorznabUrls) == 0 {
 		return nil
@@ -71,11 +96,7 @@ func Search(query string, index int) []*models.TorrentDetails {
 }
 
 func searchOne(host, key, query string) []*models.TorrentDetails {
-	if !strings.HasSuffix(host, "/") {
-		host += "/"
-	}
-
-	u, err := url.Parse(host + "api")
+	u, err := buildAPIURL(host)
 	if err != nil {
 		log.TLogln("Error parsing Torznab host:", err)
 		return nil
@@ -88,7 +109,7 @@ func searchOne(host, key, query string) []*models.TorrentDetails {
 	q.Set("cat", "5000,2000") // Movies and TV
 	u.RawQuery = q.Encode()
 
-	resp, err := http.Get(u.String())
+	resp, err := httpGet(u.String())
 	if err != nil {
 		log.TLogln("Error connecting to Torznab:", err)
 		return nil
@@ -152,11 +173,8 @@ func Test(host, key string) error {
 	if !strings.HasPrefix(host, "http://") && !strings.HasPrefix(host, "https://") {
 		host = "http://" + host
 	}
-	if !strings.HasSuffix(host, "/") {
-		host += "/"
-	}
 
-	u, err := url.Parse(host + "api")
+	u, err := buildAPIURL(host)
 	if err != nil {
 		return err
 	}
@@ -166,7 +184,7 @@ func Test(host, key string) error {
 	q.Set("t", "caps")
 	u.RawQuery = q.Encode()
 
-	resp, err := http.Get(u.String())
+	resp, err := httpGet(u.String())
 	if err != nil {
 		return err
 	}
