@@ -59,7 +59,12 @@ func (t *Torrent) Stream(fileID int, req *http.Request, resp http.ResponseWriter
 		}
 	}
 	if stFile == nil {
-		return fmt.Errorf("file with id %v not found", fileID)
+		// The handler has already validated the request, so a failure here must
+		// still answer it: returning without a write made gin send an empty
+		// 200 OK, which players read as a zero-length file.
+		err := fmt.Errorf("file with id %v not found", fileID)
+		http.Error(resp, err.Error(), http.StatusNotFound)
+		return err
 	}
 	// Find the actual torrent file
 	files := t.Files()
@@ -71,7 +76,9 @@ func (t *Torrent) Stream(fileID int, req *http.Request, resp http.ResponseWriter
 		}
 	}
 	if file == nil {
-		return fmt.Errorf("file with id %v not found", fileID)
+		err := fmt.Errorf("file with id %v not found", fileID)
+		http.Error(resp, err.Error(), http.StatusNotFound)
+		return err
 	}
 	// Check file size limit
 	if int64(sets.MaxSize) > 0 && file.Length() > int64(sets.MaxSize) {
@@ -83,7 +90,11 @@ func (t *Torrent) Stream(fileID int, req *http.Request, resp http.ResponseWriter
 	// Create reader with context for timeout
 	reader := t.NewReader(file)
 	if reader == nil {
-		return errors.New("cannot create torrent reader")
+		// NewReader returns nil only for a torrent closed after the GotInfo
+		// check above.
+		err := errors.New("cannot create torrent reader")
+		http.Error(resp, err.Error(), http.StatusServiceUnavailable)
+		return err
 	}
 	// Ensure reader is always closed
 	defer t.CloseReader(reader)
