@@ -190,6 +190,9 @@ TorrServer: build linux/amd64 ok (61 202 592 Б, sha256 `550ea84b…`), `go test
 (если PR #11 будет принят — снять replace).
 **Timeline:** T+0 ✅ развёрнуто (2026-10-17 14:07); T+30d — сверить статус PR #11 и ответ в #922;
 T+180d — пересмотреть пин/replace по факту мерджа PR.
+**Прод-проверка 2026-10-24:** бинарь `sha256 550ea84b…`, `vcs.revision=bc427f28`, go1.27.0, active
+с 17.10 14:07, 0 рестартов; в бинаре есть `nextDhtAnnounceInterval`/`dhtAnnouncer` и `v1.2.32` →
+KI-008 действительно в проде.
 
 ## KI-009: issue #925 — эвикция partial-куска даёт zero-read; фикс НЕ в собранном дереве (2026-10-24)
 **Status:** 🔴 Открыто. Исправление прототипировано в внешнем форке, но **не** в пине и **не** вызывается сервером.
@@ -211,3 +214,19 @@ T+180d — пересмотреть пин/replace по факту мерджа 
 `BUG NOT REPRODUCED` после тега `v1.2.32-mansio.2` + вызова в `Release`.
 **Timeline:** T+0 — запись создана по факту проверки; T+30d — вынести фикс в тег и `go.mod`;
 T+180d — снять replace после мерджа PR #11.
+**Прод-проверка 2026-10-24 (read-only, 192.168.2.6):** бинарь `sha256 550ea84b…`, `vcs.revision=bc427f28`,
+`vcs.modified=true`, go1.27.0; `grep -a -c InvalidateStorage` = **0** → #925 отсутствует и в проде.
+Сервис active с 2026-10-17 14:07, 0 рестартов, `/stat` 200, ошибок за 48 ч нет.
+
+## KI-010: синхронизация с upstream после 2026-10-17 (2026-10-24)
+**Status:** 🟢 4 критических фикса портированы; 2 пункта отложены.
+**Source inventory:** `upstream/master = 4bfe69e8`; отчёт `experiments/upstream-sync-2026-10-24/REPORT.md`.
+**Портировано:** `e806313a` WaitInfo/nil-drop (#929), `6ccaebbf` литеральный `%` в query (#928),
+`4bfe69e8` рестарт DLNA/Bonjour/rutor после `def` (#934), `6fba8284` таймауты DNS (#892).
+**N/A:** `7a101b8f` #914 — в нашем форке нет `statusFromSpec` (all.m3u строит вложенные плейлисты).
+**Отложено:** `d592c561` #911 внешние субтитры (`/subs`, `server/subs`, gstreamer) — крупная фича,
+не начата; `bd07eb40` torrent v1.2.34 — OPEN, наш `v1.2.32-mansio.1` несёт DHT-фикс, нужен rebase форка.
+**Guard:** `TestUnescapeQuery`; `restartServicesMu` (сериализация конкурентных `/settings`);
+build/vet/tests — зелёные. `-race` недоступен (нет cgo).
+**Red Team:** `experiments/upstream-sync-2026-10-24/RED_TEAM.md` — 2 атаки закрыты, 2 приняты как
+upstream-identical (двойной decode `%25`, `TorrentSpec` без лока).
