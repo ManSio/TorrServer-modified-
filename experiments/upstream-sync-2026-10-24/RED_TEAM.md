@@ -26,3 +26,14 @@ require a plan change, not a note.
 | A7 | Engine swap v1.2.32>v1.2.34 changes DHT/tracker behaviour | **mitigated** | our server tests pass; upstream ships v1.2.34 for #922; `-race` not run |
 | A8 | Browser sends a stale If-None-Match after upgrade | **mitigated** | ETag is derived from the embedded Indexhtml at startup, so it changes with the binary |
 | A9 | Docker entrypoint typos silently drop the Telegram token | **mitigated** | flags now match the CLI names (`--tgtoken`, `--fusepath`) used in README; no automated test |
+
+## Round 3 attacks (real holes)
+
+| # | Attack | Result | Protection |
+|---|---|---|---|
+| A10 | Multi-peer duplicates: 3 copies of a chunk waste bandwidth, and on a slow swarm they may starve the rest of the zone | **bounded** | only the piece under a reader (`readerNowPieces`), hard cap 3, duplicate timer stays for all other pieces |
+| A11 | `Client.Close` now closes DHT servers: an announcer may still hold a server reference | **holds, untested live** | close happens under `cl.lock`, announcers exit on `closed`; the post-deploy settings-save check exercises it |
+| A12 | uTP replaced by `lampac-nextgen/utp v0.2.1` (third-party fork) | **mitigated** | module replace is one line and reversible; build + full touched-package tests pass; no independent audit |
+| A13 | ffprobe `WithTimeout(5m)` cancels a probe that legitimately needs longer | **accepted** | same 5-minute bound as before, now released on early return |
+| A14 | m3u ETag hashes the whole body on every request | **accepted** | lists are small; correctness beats the old constant tag |
+| A15 | DNS cache now takes a write lock for reads | **accepted** | lookup is cold-path; map is tiny |

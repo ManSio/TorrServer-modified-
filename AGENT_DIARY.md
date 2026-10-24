@@ -81,3 +81,12 @@ experiment reports live under `experiments/<name>/REPORT.md`.
   `InvalidateStorage` symbol count 2, cache 103.9 GiB / 146.7 GiB unchanged.
 - Not proven: zero-read elimination on a live swarm — needs controlled eviction (separate instance or
   ~40 GiB above the limit). Recorded as open verification, not as issue closure.
+
+## [2026-10-24] REAL HOLES — Status: ✅ code + tests, deploy pending
+- Engine `v1.2.34-mansio.2`: DHT servers closed on Client.Close (needs utp v0.2.1) and the reader
+  piece fetched from up to 3 peers (`maxStallProneRequests`). Fork branch `fix/dht-close-multipeer`,
+  tag `v1.2.34-mansio.2` (`36d9bf0`), pushed.
+- Server: #909 state races (GotInfo/Close/expiredTime/Status copy), #938 m3u ETag from body,
+  ffprobe 5-minute goroutine leak, DNS cache delete-under-RLock, CloseDB stale global.
+- Not taken: drop-chunks-no-reader (kills background/pause prefetch), reader tiers (% regression).
+- Tests: build 0, all touched packages green.
