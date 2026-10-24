@@ -20,3 +20,5 @@ report says what it proves.
 - E-001: `atomic.Pointer` alone does not protect against `Close()` racing a reader.
 
 | E-007 | Real holes from closed PRs/engine v1.2.36 | 2026-10-24 | `go test ./torr/... ./torr/storage/torrstor/... ./cmd/... ./web/api/... ./settings/...`; fork `go test ./` | all ok; deployed `ce047db0…`; settings reconnect 200 in 3.78 s, 0 errors | #909/#938 + DHT-close + multi-peer adopted; tiers/drop-chunks rejected; multi-peer A/B not measured |
+
+| E-008 | x-ui/Xray log noise (212.113.101.151) | 2026-10-24 | access log + IPv6 probes + loglevel/metrics experiment | 0 ERROR/0 DEBUG in 60 s; UDP 46630 active | noise = client per-connection failures; loglevel none + metrics block |

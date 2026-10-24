@@ -94,3 +94,10 @@ experiment reports live under `experiments/<name>/REPORT.md`.
   `/opt/torrserver/TorrServer.bak-20261024-210640-beforeholes`; service active, `/stat` 200.
 - Live reconnect (settings save, exercises `Disconnect → Client.Close → DHT close`): 200 in 3.78 s,
   still active, 0 errors/panics.
+
+## [2026-10-24] OPS — x-ui/Xray noise — Status: ✅ fixed
+- Host 212.113.101.151: 302 refused + 776 timeouts/day were the VPN client's own failed IPv6
+  connections (~0.7% of traffic), not a server fault (IPv6 ping/curl OK).
+- Fix: Xray `loglevel: none`; added metrics block on 127.0.0.1:11112 (stops the 2-second DEBUG line).
+- Verified: 0 ERROR/0 DEBUG in 60 s, UDP 46630 still carrying traffic, service active.
+- Trade-off: Xray core logs off; re-enable with the SQL in `experiments/xray-noise-2026-10-24/REPORT.md`.
