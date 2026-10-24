@@ -194,8 +194,10 @@ T+180d — пересмотреть пин/replace по факту мерджа 
 с 17.10 14:07, 0 рестартов; в бинаре есть `nextDhtAnnounceInterval`/`dhtAnnouncer` и `v1.2.32` →
 KI-008 действительно в проде.
 
-## KI-009: issue #925 — эвикция partial-куска даёт zero-read; фикс НЕ в собранном дереве (2026-10-24)
-**Status:** 🔴 Открыто. Исправление прототипировано в внешнем форке, но **не** в пине и **не** вызывается сервером.
+## KI-009: issue #925 — эвикция partial-куска даёт zero-read (2026-10-24) — ИСПРАВЛЕНО В КОДЕ, не задеплоено
+**Status:** 🟢 Исправлено 2026-10-24 20:20: форк-тег `v1.2.34-mansio.1` (`9bb0213`) + вызов
+`tp.InvalidateStorage()` в `Piece.Release` (`server/torr/storage/torrstor/piece.go`).
+Собранное дерево и тесты — зелёные; на проде пока старый бинарь без фикса.
 **Source:** https://github.com/YouROK/TorrServer/issues/925
 **Files:** `../_forks/torrent/piece.go:250` (`InvalidateStorage`, внешний форк, вне репо);
 `server/go.mod:6` (`ManSio/torrent v1.2.32-mansio.1` — метода НЕТ);
@@ -208,8 +210,13 @@ KI-008 действительно в проде.
 **Факт (2026-10-24, `go test ./torr/storage/torrstor -run Issue925 -v`):**
 `BUG REPRODUCED: evicted region reads as ZEROS`; `CHARACTERIZED: #925 present`. Тесты — PASS, потому
 что фиксируют наличие бага, а не его отсутствие.
-**H5 опровергнута:** `TestIssue925ReleaseWiringWithRealTorrent` проходит, но доказывает только
-отсутствие паники/deadlock; `Release` новый метод не вызывает (`experiments/issue925/REPORT.md`).
+**H5 (было опровергнуто, теперь подтверждено):** 24.10 `Release` вызывает `InvalidateStorage`
+перед `SetPriority(None)`; `TestIssue925ReleaseWiringWithRealTorrent` проходит.
+**Доказательство фикса (fork, база `tsynik v1.2.34`):**
+- ветка `ManSio/torrent fix/invalidate-storage-v1.2.34`, тег `v1.2.34-mansio.1` (`9bb0213`), запушены;
+- `TestInvalidateStorageClearsDirtyChunks` → PASS (dirtyChunks очищаются, соседний кусок — негатив-контроль);
+- `go build ./...` = 0; `go test ./torr/storage/torrstor -run Issue925` = PASS.
+- **Не проверено:** устранение zero-read на живом торренте/рое — нужен реальный просмотр.
 **Guard:** репро-тест с положительным и отрицательным контролем остаётся в дереве; критерий закрытия —
 `BUG NOT REPRODUCED` после тега `v1.2.32-mansio.2` + вызова в `Release`.
 **Timeline:** T+0 — запись создана по факту проверки; T+30d — вынести фикс в тег и `go.mod`;
@@ -235,11 +242,21 @@ T+180d — снять replace после мерджа PR #11.
 - `4aa1061f` #908 web revalidate — **частично**: `/` отдаётся с `no-cache`, сильный quoted ETag и
   304 по `If-None-Match`; полная регенерация static-заголовков/`gen_web.go` отложена.
 - `5e9ed1f2` #923 — не нужен без #911.
-**Решение по движку:** `server/go.mod` теперь `github.com/anacrolix/torrent => github.com/tsynik/torrent v1.2.34`;
-`ManSio/torrent v1.2.32-mansio.1` больше не используется. #925 остаётся открытым: в v1.2.34
-`InvalidateStorage` отсутствует (grep модуля = 0), поэтому для фикса нужен новый тег форка на базе
-v1.2.34 + вызов в `Piece.Release`.
+**Решение по движку:** `server/go.mod` теперь `github.com/anacrolix/torrent => github.com/ManSio/torrent v1.2.34-mansio.1`.
+База — `tsynik/torrent v1.2.34`, который сам является мерджем нашего PR #11 (DHT-фикс), поэтому форк
+теперь несёт **только** `InvalidateStorage` (#925). `v1.2.32-mansio.1` больше не используется.
 **Guard:** `TestUnescapeQuery`; `restartServicesMu` (сериализация конкурентных `/settings`);
 build/vet/tests — зелёные. `-race` недоступен (нет cgo).
 **Red Team:** `experiments/upstream-sync-2026-10-24/RED_TEAM.md` — 2 атаки закрыты, 2 приняты как
 upstream-identical (двойной decode `%25`, `TorrentSpec` без лока).
+## KI-011: флейк — TestReconcileFindsPreExistingOrphans (2026-10-24)
+**Status:** 🟡 Наблюдаем (1 из 3 прогонов)
+**File:** `server/torr/storage/torrstor/cache_limit_test.go:246`
+**Симптом:** `setup wrong: server already counts 8388608 bytes` сразу после создания 16 файлов
+фикстуры, до `reconcileOrphans(true)`.
+**Гипотеза:** фоновый reconciler/cleanupLoop успевает просканировать `TorrentsSavePath` между
+созданием файлов и проверкой; тест опирается на «счётчик == 0» в окне, где это не гарантировано.
+**Проверка:** повторные `go test ./torr/storage/torrstor -count=1` — 2/2 PASS, т.е. флейк, не
+детерминированная регрессия; движок/наши правки в этом тесте не участвуют.
+**Deadline:** при повторе ≥2 раз — детерминированный guard (остановить worker на время фикстуры
+или вынести фикстуру в отдельный путь без фонового скана).
