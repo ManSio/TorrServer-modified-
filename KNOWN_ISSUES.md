@@ -267,3 +267,21 @@ upstream-identical (двойной decode `%25`, `TorrentSpec` без лока).
 детерминированная регрессия; движок/наши правки в этом тесте не участвуют.
 **Deadline:** при повторе ≥2 раз — детерминированный guard (остановить worker на время фикстуры
 или вынести фикстуру в отдельный путь без фонового скана).
+
+## KI-012: дыры, закрытые из закрытых PR/engine v1.2.36 (2026-10-24)
+**Status:** 🟢 код готов и протестирован; деплой — в этом же цикле.
+**Взято из `lampac-nextgen/torrent` v1.2.36 (не из #939 целиком):**
+- `1013ca2` + `lampac-nextgen/utp v0.2.1`: `Client.Close` больше не оставляет DHT serve
+  заблокированным в uTP `ReadFrom` (у нас в v1.2.34 стоял `// TODO`). Актуально: сервер
+  пересоздаёт клиент на каждое сохранение настроек.
+- `8b29b49`: кусок под читателем качается с нескольких пиров (кап `maxStallProneRequests=3`),
+  остальная зона — по-прежнему с duplicate-timer. Заявка автора: 1.82→4.22 MiB/s, стойки 79→47.
+**Взято из #909/`ef4e461d` (merged upstream):** `GotInfo` не дёргает `Stat` без лока,
+`expiredTime` под `muTorrent`, `Close` check-and-set под локом, `Status` сортирует копию `Files`.
+**Взято из #938 (open):** ETag `.m3u` считается от тела, а не от `hash/name`.
+**Свои дыры:** ffprobe-контекст больше не оставляет goroutine на 5 минут; DNS-cache не удаляет
+под `RLock` и отдаёт копию; `TDB.CloseDB` сбрасывает `globalBboltDB`.
+**Не взято:** `a0ceb3b` drop-chunks-no-reader (конфликт с background-fetch/pause-window),
+`4371696` reader tiers (процентная семантика — регресс KI-003/005).
+**Проверка:** build 0; `go test ./torr/... ./torrstor/... ./cmd/... ./web/api/... ./settings/...` — ok.
+**Не проверено:** живой A/B multi-peer и reconnect-поведение DHT close (проверяется после деплоя).
