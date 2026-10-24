@@ -1,0 +1,45 @@
+════════════════════════════════════════════════════════════════
+  🚀 TorrServer Project - Quick Start for New Chat
+════════════════════════════════════════════════════════════════
+
+📋 COPY-PASTE THIS INTO NEW CHAT:
+
+────────────────────────────────────────────────────────────────
+
+I'm continuing work on TorrServer global cache implementation.
+
+READ THIS FILE FIRST (contains full context):
+D:\Project\TorrServer-master\NEXT_CHAT_PROMPT.md
+
+QUICK SUMMARY:
+- ✅ Code is DONE and deployed to production server
+- ✅ Compiles on Windows + Linux
+- ✅ Ready for GitHub PR
+- ⚠️ Investigating video buffering (3-5 sec pauses)
+
+CURRENT QUESTION:
+Is the buffering caused by our code, or is it a pre-existing network/disk issue?
+
+Investigation agent found: Network speed drops to 0 during pauses (likely root cause).
+
+WHAT SHOULD WE DO NEXT?
+A) Rollback test (definitive, but disrupts video)
+B) Monitor network (non-disruptive)
+C) Test lower bitrate video
+D) Submit to GitHub as-is (buffering likely not our fault)
+
+Please read NEXT_CHAT_PROMPT.md and recommend next steps.
+
+────────────────────────────────────────────────────────────────
+
+📁 KEY FILES:
+- NEXT_CHAT_PROMPT.md          ← START HERE (full context)
+- INVESTIGATION_BRIEFING.md    ← Investigation details
+- GITHUB_SUBMISSION_GUIDE.md   ← How to submit PR
+- PR_DESCRIPTION.md            ← Copy-paste for PR
+- COMMIT_MESSAGE.txt           ← Copy-paste for commit
+
+🔑 SERVER ACCESS:
+ssh mansio@192.168.2.6
+
+════════════════════════════════════════════════════════════════

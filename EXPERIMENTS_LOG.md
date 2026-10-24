@@ -10,6 +10,7 @@ report says what it proves.
 | E-002 | #925 zero-read on partial eviction (KI-009) | 2026-10-19 | `go test ./torr/storage/torrstor -run 'Issue925' -v` | `BUG REPRODUCED`, `CHARACTERIZED: #925 present` | Bug characterized; fix NOT in pinned engine; H5 REFUTED |
 | E-003 | opencode failure corpus | 2026-10-19 | see `experiments/oc-failure-analysis/scripts/` | 807 labeled, rule-vs-LLM 90.8% | superseded numbers recorded in that diary |
 | E-004 | Zed failure corpus | 2026-10-20 | see `experiments/zed-failure-analysis/scripts/` | 669 threads, 85,433 tool events | closed; see `REPORT.md` |
+| E-005 | Upstream sync (#928/#929/#934/#892) | 2026-10-24 | `go build ./... && go vet ./... && go test ./cmd/... ./web/api/... ./torr/...` | exit 0, all ok | 4 ported; #914 N/A; #911 staged; engine OPEN |
 
 ## Negative results (do not repeat)
 

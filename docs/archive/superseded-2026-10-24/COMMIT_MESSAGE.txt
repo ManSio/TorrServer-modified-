@@ -1,0 +1,29 @@
+feat(cache): global limit with atomic tracking + fractional preload
+
+Implements global cache limiting (from #637 by @event) with O(1) atomic
+counter and LRU eviction, plus fractional preload percentages (from #803
+by @akir-dev).
+
+Features:
+- OneCacheForAll: limit cache globally across all torrents
+- Atomic counter: O(1) capacity check (vs O(N) scan)
+- LRU eviction: oldest pieces removed first (vs random)
+- Async disk deletion: non-blocking I/O worker
+- Configurable hysteresis: clean to 90% (default) of capacity
+- Fractional preload: 0.01% - 100% (vs integer-only)
+
+Backward compatible: OneCacheForAll=false (default), existing configs work.
+
+Testing:
+- 6 unit tests (compat, races, consistency, LRU)
+- 3 stress tests (inactive handling, races, 100GB+ pressure)
+
+Benchmark (100GB cache, 10 torrents):
+- Old: ~50ms per cleanup (O(N) scan)
+- New: ~1ms per cleanup (atomic counter)
+
+Co-authored-by: event <event@users.noreply.github.com>
+Co-authored-by: akir-dev <akir-dev@users.noreply.github.com>
+
+Closes #637
+Closes #803

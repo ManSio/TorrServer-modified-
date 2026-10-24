@@ -36,6 +36,20 @@ experiment reports live under `experiments/<name>/REPORT.md`.
 - Root Cause: snapshot commit `b6894e4d` replaced upstream `fmt.Errorf("unknown scheme %q: %v", ...)` with `fmt.Errorf("unknown scheme:", ...)`.
 - Fix: restored the upstream format; `go vet ./web/api/utils` now exits 0.
 
+## [2026-10-24] PROD VERIFIED (read-only) — Status: ✅ recorded
+- `192.168.2.6`: binary sha `550ea84b…`, `vcs.revision=bc427f28`, `vcs.modified=true`, go1.27.0,
+  active since 2026-10-17 14:07, 0 restarts, `/stat` 200, 0 errors in 48 h.
+- `Cache 103.9 GiB of 146.7 GiB`, disk `104G`, `#Torrents: 0`.
+- Symbols present: `totalOnDisk`, `orphanBytes`, `readAheadBytes`, `AutoTune`, `dhtAnnouncer`, `v1.2.32`.
+- Symbol **absent**: `InvalidateStorage` → #925 is not in the deployed binary.
+
+## [2026-10-24] UPSTREAM SYNC — Status: ✅ 4 fixes ported, 1 staged
+- Ported: `e806313a` WaitInfo (#929), `6ccaebbf` literal `%` (#928), `4bfe69e8` settings restart (#934),
+  `6fba8284` DNS timeouts (#892). Report: `experiments/upstream-sync-2026-10-24/REPORT.md`.
+- N/A: #914 (our `all.m3u` has no `statusFromSpec`). Deferred: #911 `/subs` (large feature),
+  engine v1.2.34 (OPEN: our `v1.2.32-mansio.1` carries the DHT fix).
+- Guard: `TestUnescapeQuery`; `restartServicesMu`; build/vet/tests green.
+
 ## Open threads
 
 | Thread | Age | Next |
