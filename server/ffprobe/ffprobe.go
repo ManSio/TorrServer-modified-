@@ -32,21 +32,21 @@ func Exists() bool {
 	return !os.IsNotExist(err)
 }
 
+func probeContext() (context.Context, context.CancelFunc) {
+	// WithTimeout cancels itself when it fires and is released by defer cancel,
+	// so a probe that returns early no longer leaves a goroutine sleeping for
+	// five minutes.
+	return context.WithTimeout(context.Background(), 5*time.Minute)
+}
+
 func ProbeUrl(link string) (*ffprobe.ProbeData, error) {
-	data, err := ffprobe.ProbeURL(getCtx(), link)
-	return data, err
+	ctx, cancel := probeContext()
+	defer cancel()
+	return ffprobe.ProbeURL(ctx, link)
 }
 
 func ProbeReader(reader io.Reader) (*ffprobe.ProbeData, error) {
-	data, err := ffprobe.ProbeReader(getCtx(), reader)
-	return data, err
-}
-
-func getCtx() context.Context {
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.Sleep(5 * time.Minute)
-		cancel()
-	}()
-	return ctx
+	ctx, cancel := probeContext()
+	defer cancel()
+	return ffprobe.ProbeReader(ctx, reader)
 }

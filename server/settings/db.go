@@ -39,6 +39,11 @@ func (v *TDB) CloseDB() {
 		v.db.Close()
 		v.db = nil
 	}
+	// NewTDB hands out globalBboltDB while it is non-nil. Keeping a closed
+	// handle there makes the next caller reuse a TDB whose db is nil.
+	if globalBboltDB == v {
+		globalBboltDB = nil
+	}
 }
 
 func (v *TDB) Get(xpath, name string) []byte {
