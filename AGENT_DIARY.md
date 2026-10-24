@@ -90,3 +90,7 @@ experiment reports live under `experiments/<name>/REPORT.md`.
   ffprobe 5-minute goroutine leak, DNS cache delete-under-RLock, CloseDB stale global.
 - Not taken: drop-chunks-no-reader (kills background/pause prefetch), reader tiers (% regression).
 - Tests: build 0, all touched packages green.
+- Deployed 2026-10-24 21:06: `sha256 ce047db0…d6ad`, backup
+  `/opt/torrserver/TorrServer.bak-20261024-210640-beforeholes`; service active, `/stat` 200.
+- Live reconnect (settings save, exercises `Disconnect → Client.Close → DHT close`): 200 in 3.78 s,
+  still active, 0 errors/panics.
