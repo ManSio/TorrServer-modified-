@@ -120,7 +120,13 @@ func (p *Piece) Release() {
 	// Torrent may be nil during init/teardown or in tests — never panic here.
 	// (Aug 29 panics: nil pointer via cache.go during stream.)
 	if p.cache != nil && p.cache.torrent != nil {
-		p.cache.torrent.Piece(p.Id).SetPriority(torrent.PiecePriorityNone)
-		p.cache.torrent.Piece(p.Id).UpdateCompletion()
+		tp := p.cache.torrent.Piece(p.Id)
+		// The storage just dropped these bytes, but the client may still count
+		// the piece's chunks as received and serve zeros to a re-reading viewer.
+		// Re-pend them before telling the client the piece is not complete
+		// (YouROK/TorrServer#925).
+		tp.InvalidateStorage()
+		tp.SetPriority(torrent.PiecePriorityNone)
+		tp.UpdateCompletion()
 	}
 }
