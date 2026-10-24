@@ -50,28 +50,41 @@ func settings(c *gin.Context) {
 	} else if req.Action == "set" {
 		torr.SetSettings(req.Sets)
 		invalidateSettingsJSON()
-		dlna.Stop()
-		if req.Sets.EnableDLNA {
-			dlna.Start()
-		}
-		bonjour.Stop()
-		if req.Sets.EnableBonjour {
-			bonjour.Start()
-		}
-		rutor.Stop()
-		rutor.Start()
+		restartServices()
 		c.Status(200)
 		return
 	} else if req.Action == "def" {
 		torr.SetDefSettings()
 		invalidateSettingsJSON()
-		dlna.Stop()
-		bonjour.Stop()
-		rutor.Stop()
+		restartServices()
 		c.Status(200)
 		return
 	}
 	c.AbortWithError(http.StatusBadRequest, errors.New("action is empty"))
+}
+
+// restartServices applies the settings now in effect to DLNA, Bonjour and the
+// rutor search. Reading sets.BTsets (not the request) also keeps read-only mode
+// consistent: the request is not applied there, so the services must follow what
+// is actually in use.
+var restartServicesMu sync.Mutex
+
+func restartServices() {
+	// Serialize concurrent /settings requests: interleaved Stop/Start pairs can
+	// otherwise leave a service stopped although the final settings enable it.
+	restartServicesMu.Lock()
+	defer restartServicesMu.Unlock()
+
+	dlna.Stop()
+	if sets.BTsets.EnableDLNA {
+		dlna.Start()
+	}
+	bonjour.Stop()
+	if sets.BTsets.EnableBonjour {
+		bonjour.Start()
+	}
+	rutor.Stop()
+	rutor.Start()
 }
 
 // The web client polls /settings with action=get constantly - 9437 of the last
