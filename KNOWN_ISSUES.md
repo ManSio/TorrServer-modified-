@@ -224,8 +224,21 @@ T+180d — снять replace после мерджа PR #11.
 **Портировано:** `e806313a` WaitInfo/nil-drop (#929), `6ccaebbf` литеральный `%` в query (#928),
 `4bfe69e8` рестарт DLNA/Bonjour/rutor после `def` (#934), `6fba8284` таймауты DNS (#892).
 **N/A:** `7a101b8f` #914 — в нашем форке нет `statusFromSpec` (all.m3u строит вложенные плейлисты).
-**Отложено:** `d592c561` #911 внешние субтитры (`/subs`, `server/subs`, gstreamer) — крупная фича,
-не начата; `bd07eb40` torrent v1.2.34 — OPEN, наш `v1.2.32-mansio.1` несёт DHT-фикс, нужен rebase форка.
+**Отклонено владельцем:** `d592c561` #911 внешние субтитры (`/subs`) — не внедряем.
+**Вторая волна (2026-10-24):**
+- `bd07eb40` torrent v1.2.34 — **внедрено**: `replace` переведён с `ManSio/torrent v1.2.32-mansio.1`
+  на `tsynik/torrent v1.2.34`. Проверено по коду модуля: v1.2.34 содержит тот же DHT-фикс
+  (`nextDhtAnnounceInterval`, retry 15 s, выход по `done`), поэтому форк больше не нужен.
+- `4e163a78` #678 migrate — **внедрено**: существующий ключ в target больше не перезаписывается;
+  `migrate_target_wins_test.go` (regression + positive control).
+- `76cd0c17` #910 docker args — **внедрено** (`--tgtoken`, `--fusepath`).
+- `4aa1061f` #908 web revalidate — **частично**: `/` отдаётся с `no-cache`, сильный quoted ETag и
+  304 по `If-None-Match`; полная регенерация static-заголовков/`gen_web.go` отложена.
+- `5e9ed1f2` #923 — не нужен без #911.
+**Решение по движку:** `server/go.mod` теперь `github.com/anacrolix/torrent => github.com/tsynik/torrent v1.2.34`;
+`ManSio/torrent v1.2.32-mansio.1` больше не используется. #925 остаётся открытым: в v1.2.34
+`InvalidateStorage` отсутствует (grep модуля = 0), поэтому для фикса нужен новый тег форка на базе
+v1.2.34 + вызов в `Piece.Release`.
 **Guard:** `TestUnescapeQuery`; `restartServicesMu` (сериализация конкурентных `/settings`);
 build/vet/tests — зелёные. `-race` недоступен (нет cgo).
 **Red Team:** `experiments/upstream-sync-2026-10-24/RED_TEAM.md` — 2 атаки закрыты, 2 приняты как
