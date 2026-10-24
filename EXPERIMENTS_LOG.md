@@ -17,3 +17,5 @@ report says what it proves.
 - E-002: a green wiring test does **not** prove a fix when the production call site is absent.
 - E-002: adding `go.mod` `replace` to a local fork is not a fix until the tag is published and pinned.
 - E-001: `atomic.Pointer` alone does not protect against `Close()` racing a reader.
+
+| E-006 | Engine v1.2.34 + #678 + #910 + #908 | 2026-10-24 | `go build ./... && go test ./torr/... ./settings/... ./web/pages/template/...` | build 0, all ok | v1.2.34 adopted; #678/#910 adopted; #908 partial; #911 rejected |

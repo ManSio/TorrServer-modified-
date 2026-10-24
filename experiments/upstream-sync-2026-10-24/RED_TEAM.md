@@ -17,3 +17,12 @@ require a plan change, not a note.
   fixed here; recorded in the report as accepted, not as "safe".
 - `-race` unavailable locally (`CGO_ENABLED=0`, no gcc), so A2/A3 thread safety is proven
   by reasoning + deterministic tests only.
+
+## Stage 2 attacks
+
+| # | Attack | Result | Protection |
+|---|---|---|---|
+| A6 | #678 "target wins" means a stale live DB never receives corrections from the source file | **holds by design** | target is the live DB; the bug was the opposite direction. Tested both directions |
+| A7 | Engine swap v1.2.32>v1.2.34 changes DHT/tracker behaviour | **mitigated** | our server tests pass; upstream ships v1.2.34 for #922; `-race` not run |
+| A8 | Browser sends a stale If-None-Match after upgrade | **mitigated** | ETag is derived from the embedded Indexhtml at startup, so it changes with the binary |
+| A9 | Docker entrypoint typos silently drop the Telegram token | **mitigated** | flags now match the CLI names (`--tgtoken`, `--fusepath`) used in README; no automated test |

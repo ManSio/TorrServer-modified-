@@ -51,3 +51,18 @@ go test ./cmd/... ./web/api/... ./torr/... \
 - #929 fix is compile- and unit-tested, but the production drop-vs-WaitInfo race was not
   replayed under load.
 - DNSSEC/hijack behaviour not tested on a hostile resolver; only the timeout path changed.
+
+## Stage 2 (2026-10-24, after owner rejected #911)
+
+| Item | Decision | Evidence |
+|---|---|---|
+| engine `bd07eb40` v1.2.34 | **adopted** | module grep: `nextDhtAnnounceInterval`/`dhtAnnouncer`/`announceToDht` present with the same 15 s retry logic as our fork; `InvalidateStorage` absent in both |
+| `4e163a78` #678 | **adopted** | issue text: old `viewed.json` overwrote newer bbolt on every start; `TestMigrateAllKeepsTarget` + `TestMigrateAllFillsMissing` |
+| `76cd0c17` #910 | **adopted** | `docker-entrypoint.sh`: `--tg`>`--tgtoken`, `--fuse`>`--fusepath` |
+| `4aa1061f` #908 | **partial** | `/` > `no-cache`, quoted ETag, 304; `TestIndexIsRevalidated`. Full static/ETag regeneration deferred |
+| `d592c561` #911 | **rejected by owner** | `/subs` not wanted |
+
+Verification: `go build ./...` = 0; `go test ./torr/... ./torr/storage/torrstor/... ./settings/... ./web/pages/template/...` all ok.
+Engine swap did not change the server tests; `-race` still unavailable.
+
+Not verified: #908 with a real browser/proxy cache; v1.2.34 vs v1.2.32 behaviour beyond our test suite.

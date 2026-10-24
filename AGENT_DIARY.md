@@ -57,3 +57,11 @@ experiment reports live under `experiments/<name>/REPORT.md`.
 | KI-002 P0: `ReadAt`/`Release` under `p.mu.Lock` | since 2026-08-29 | measure contention; the old `maxRemovePerCycle` plan is stale |
 | KI-009 #925 fix | 2026-10-19 | publish fork tag + wire `Release` |
 | `-race` unavailable (`CGO_ENABLED=0`, no gcc) | permanent locally | run in CI with cgo |
+
+## [2026-10-24] UPSTREAM SYNC — STAGE 2 — Status: ? engine + #678 + #910 + partial #908
+- Engine: `tsynik/torrent v1.2.34` replaces `ManSio v1.2.32-mansio.1`; v1.2.34 already contains the
+  DHT fix we patched, so the fork is redundant. #925 still needs a fork tag on the v1.2.34 base.
+- #678: `MigrateAll` now keeps the existing target (old JSON no longer overwrites newer bbolt).
+- #910: docker flags `--tgtoken`/`--fusepath`; #908: `/` is `no-cache` + ETag/304 (partial).
+- #911 `/subs` rejected by the owner.
+- Guard: `TestMigrateAllKeepsTarget`, `TestMigrateAllFillsMissing`, `TestIndexIsRevalidated`.
