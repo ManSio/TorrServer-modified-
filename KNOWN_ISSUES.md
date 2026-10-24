@@ -284,4 +284,11 @@ upstream-identical (двойной decode `%25`, `TorrentSpec` без лока).
 **Не взято:** `a0ceb3b` drop-chunks-no-reader (конфликт с background-fetch/pause-window),
 `4371696` reader tiers (процентная семантика — регресс KI-003/005).
 **Проверка:** build 0; `go test ./torr/... ./torrstor/... ./cmd/... ./web/api/... ./settings/...` — ok.
-**Не проверено:** живой A/B multi-peer и reconnect-поведение DHT close (проверяется после деплоя).
+**Деплой 2026-10-24 21:06:** бинарь `sha256 ce047db0…d6ad`, `vcs.revision=1c497f64`;
+бэкап `/opt/torrserver/TorrServer.bak-20261024-210640-beforeholes`. Сервис active, `/stat` 200,
+0 ошибок/panic. Символы в бинаре: `InvalidateStorage`=2, `inFlightRequests`=3, `lampac-nextgen/utp`=3.
+**Живая проверка reconnect:** `POST /settings {"action":"set"}` с текущими настройками — `200`
+за **3.78 с**, сервис active, `/stat` 200, 0 ошибок/panic после (это путь `Disconnect → Client.Close`,
+т.е. DHT-close отработал).
+**Не проверено:** A/B multi-peer на реальном торренте (нужен рой и замер скорости/стоек) и
+устранение zero-read #925 (нужно вытеснение куска).
