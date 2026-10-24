@@ -195,9 +195,11 @@ T+180d — пересмотреть пин/replace по факту мерджа 
 KI-008 действительно в проде.
 
 ## KI-009: issue #925 — эвикция partial-куска даёт zero-read (2026-10-24) — ИСПРАВЛЕНО В КОДЕ, не задеплоено
-**Status:** 🟢 Исправлено 2026-10-24 20:20: форк-тег `v1.2.34-mansio.1` (`9bb0213`) + вызов
-`tp.InvalidateStorage()` в `Piece.Release` (`server/torr/storage/torrstor/piece.go`).
-Собранное дерево и тесты — зелёные; на проде пока старый бинарь без фикса.
+**Status:** 🟢 Исправлено 2026-10-24 20:20 и **задеплоено 2026-10-24 20:32**:
+форк-тег `v1.2.34-mansio.1` (`9bb0213`) + вызов `tp.InvalidateStorage()` в `Piece.Release`.
+**Прод:** `sha256 8a8b8829…0111c`, `vcs.revision=db2309b9`, symbol `InvalidateStorage` = 2, сервис
+active, `/stat` 200, 0 ошибок/0 panic после старта. Бэкап:
+`/opt/torrserver/TorrServer.bak-20261024-203242-before925`.
 **Source:** https://github.com/YouROK/TorrServer/issues/925
 **Files:** `../_forks/torrent/piece.go:250` (`InvalidateStorage`, внешний форк, вне репо);
 `server/go.mod:6` (`ManSio/torrent v1.2.32-mansio.1` — метода НЕТ);
@@ -216,7 +218,12 @@ KI-008 действительно в проде.
 - ветка `ManSio/torrent fix/invalidate-storage-v1.2.34`, тег `v1.2.34-mansio.1` (`9bb0213`), запушены;
 - `TestInvalidateStorageClearsDirtyChunks` → PASS (dirtyChunks очищаются, соседний кусок — негатив-контроль);
 - `go build ./...` = 0; `go test ./torr/storage/torrstor -run Issue925` = PASS.
-- **Не проверено:** устранение zero-read на живом торренте/рое — нужен реальный просмотр.
+- **Не проверено (главное):** устранение zero-read на живом торренте/рое. Для этого нужно реальное
+  вытеснение partial-куска: либо заполнить кэш до лимита (~40 GiB сверх текущих 104 GiB), либо поднять
+  отдельный инстанс с малым `CacheSize` и локальным сидом. Статус: **deployed, live behaviour not
+  proven** — не выдавать за закрытие issue.
+**Откат:** `sudo mv /opt/torrserver/TorrServer.bak-20261024-203242-before925 /opt/torrserver/TorrServer
+&& sudo systemctl restart torrserver`.
 **Guard:** репро-тест с положительным и отрицательным контролем остаётся в дереве; критерий закрытия —
 `BUG NOT REPRODUCED` после тега `v1.2.32-mansio.2` + вызова в `Release`.
 **Timeline:** T+0 — запись создана по факту проверки; T+30d — вынести фикс в тег и `go.mod`;

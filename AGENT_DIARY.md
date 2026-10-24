@@ -73,3 +73,11 @@ experiment reports live under `experiments/<name>/REPORT.md`.
 - Evidence: fork `TestInvalidateStorageClearsDirtyChunks` PASS; `go build ./...` = 0;
   `go test ./torr/storage/torrstor -run Issue925` PASS.
 - Not verified: live swarm; deployment. Prod still runs the 17.10 binary.
+
+## [2026-10-24] DEPLOY #925 — Status: ✅ deployed, ⚠️ live behaviour not proven
+- Binary `sha256 8a8b8829…0111c`, `vcs.revision=db2309b9`, built linux/amd64 from the current tree.
+- Replaced `550ea84b…`; backup `/opt/torrserver/TorrServer.bak-20261024-203242-before925`.
+- Post-checks: service active (20:32:48), 0 restarts, `/stat` 200, 0 errors, 0 panics,
+  `InvalidateStorage` symbol count 2, cache 103.9 GiB / 146.7 GiB unchanged.
+- Not proven: zero-read elimination on a live swarm — needs controlled eviction (separate instance or
+  ~40 GiB above the limit). Recorded as open verification, not as issue closure.
