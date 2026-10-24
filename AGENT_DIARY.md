@@ -46,8 +46,8 @@ experiment reports live under `experiments/<name>/REPORT.md`.
 ## [2026-10-24] UPSTREAM SYNC — Status: ✅ 4 fixes ported, 1 staged
 - Ported: `e806313a` WaitInfo (#929), `6ccaebbf` literal `%` (#928), `4bfe69e8` settings restart (#934),
   `6fba8284` DNS timeouts (#892). Report: `experiments/upstream-sync-2026-10-24/REPORT.md`.
-- N/A: #914 (our `all.m3u` has no `statusFromSpec`). Deferred: #911 `/subs` (large feature),
-  engine v1.2.34 (OPEN: our `v1.2.32-mansio.1` carries the DHT fix).
+- N/A: #914 (our `all.m3u` has no `statusFromSpec`). #911 `/subs` rejected by the owner.
+  Engine v1.2.34 adopted in the stage-2 entry below.
 - Guard: `TestUnescapeQuery`; `restartServicesMu`; build/vet/tests green.
 
 ## Open threads
@@ -55,13 +55,21 @@ experiment reports live under `experiments/<name>/REPORT.md`.
 | Thread | Age | Next |
 |---|---|---|
 | KI-002 P0: `ReadAt`/`Release` under `p.mu.Lock` | since 2026-08-29 | measure contention; the old `maxRemovePerCycle` plan is stale |
-| KI-009 #925 fix | 2026-10-19 | publish fork tag + wire `Release` |
+| KI-009 #925 fix | 2026-10-19 | ✅ code fixed (tag `v1.2.34-mansio.1`); deploy + live check |
 | `-race` unavailable (`CGO_ENABLED=0`, no gcc) | permanent locally | run in CI with cgo |
 
-## [2026-10-24] UPSTREAM SYNC � STAGE 2 � Status: ? engine + #678 + #910 + partial #908
+## [2026-10-24] UPSTREAM SYNC — STAGE 2 — Status: ✅ engine + #678 + #910 + partial #908
 - Engine: `tsynik/torrent v1.2.34` replaces `ManSio v1.2.32-mansio.1`; v1.2.34 already contains the
   DHT fix we patched, so the fork is redundant. #925 still needs a fork tag on the v1.2.34 base.
 - #678: `MigrateAll` now keeps the existing target (old JSON no longer overwrites newer bbolt).
 - #910: docker flags `--tgtoken`/`--fusepath`; #908: `/` is `no-cache` + ETag/304 (partial).
 - #911 `/subs` rejected by the owner.
 - Guard: `TestMigrateAllKeepsTarget`, `TestMigrateAllFillsMissing`, `TestIndexIsRevalidated`.
+
+## [2026-10-24] ISSUE #925 CLOSED IN CODE — Status: ✅ fixed, not deployed
+- Fork: `ManSio/torrent` branch `fix/invalidate-storage-v1.2.34`, tag `v1.2.34-mansio.1` (`9bb0213`).
+- Base is `tsynik/torrent v1.2.34` = merge of our PR #11, so the fork carries only `InvalidateStorage`.
+- Server: `Piece.Release` calls `InvalidateStorage()` before `SetPriority(None)`.
+- Evidence: fork `TestInvalidateStorageClearsDirtyChunks` PASS; `go build ./...` = 0;
+  `go test ./torr/storage/torrstor -run Issue925` PASS.
+- Not verified: live swarm; deployment. Prod still runs the 17.10 binary.

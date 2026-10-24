@@ -35,20 +35,22 @@ ok  	server/torr/storage/torrstor	2.947s
 
 | # | Hypothesis | Verdict | Evidence |
 |---|---|---|---|
-| H1 | `Piece.InvalidateStorage()` clears dirty chunks | ⏳ NOT IN BUILT TREE | method exists only in `../_forks/torrent/piece.go:250`; pinned module `v1.2.32-mansio.1` has **no** `InvalidateStorage` |
+| H1 | `Piece.InvalidateStorage()` clears dirty chunks | ✅ CONFIRMED | fork tag `v1.2.34-mansio.1`; `TestInvalidateStorageClearsDirtyChunks` PASS |
 | H2 | Without the fix the storage repro still shows zero-read | ✅ CONFIRMED (negative control) | `BUG REPRODUCED ... reads as ZEROS` |
-| H3 | `iterUndirtiedChunks` returns all chunks | ⏳ NOT IN BUILT TREE | same as H1 (fork only) |
+| H3 | `iterUndirtiedChunks` returns all chunks | ✅ CONFIRMED | same fork test: every chunk pending again |
 | H4 | Storage-level tests do not change behaviour after the fix | ✅ CONFIRMED | repro still reports the bug; fix belongs to the library layer |
-| H5 | Server `Piece.Release` calls the new method | ❌ REFUTED | `torr/storage/torrstor/piece.go:114-126` calls `SetPriority(None)` + `UpdateCompletion()`, **no `InvalidateStorage`**; the wiring test only proves no panic/deadlock |
+| H5 | Server `Piece.Release` calls the new method | ✅ CONFIRMED | `piece.go:Release` calls `InvalidateStorage()` before `SetPriority(None)`; wiring test PASS |
 
 ## Conclusion
 
-**#925 is NOT fixed in the built tree.** The repro is valid and still reproduces zero-read.
-The fix was prototyped in the external fork but was never tagged, pinned, or called from the server.
-`TestIssue925ReleaseWiringWithRealTorrent` is a smoke test of the call site, not proof of the fix.
+**#925 is fixed in code on 2026-10-24 20:20.** The fork tag `v1.2.34-mansio.1` adds
+`InvalidateStorage`, and the server `Release` calls it. The storage-level repro still prints
+`BUG REPRODUCED` by design — it exercises the storage layer only, not the library fix.
+
+Not verified: elimination of zero-read on a live torrent/swarm (needs a real playback session).
+The deployed binary (`550ea84b…`, 2026-10-17) predates this fix.
 
 ## Next
 
-1. Tag the fork `v1.2.32-mansio.2`, bump the `replace` in `server/go.mod`.
-2. Insert `piece.InvalidateStorage()` in `Piece.Release` before `SetPriority(None)`.
-3. Re-run this report; a valid outcome is `BUG NOT REPRODUCED`.
+1. Build and deploy a binary from this tree; re-run the live check.
+2. Close YouROK/TorrServer#925 with the tag + the two-commit evidence.
