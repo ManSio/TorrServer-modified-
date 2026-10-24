@@ -8,9 +8,16 @@ import (
 
 func RouteWebPages(route gin.IRouter) {
 	route.GET("/", func(c *gin.Context) {
-		etag := fmt.Sprintf("%x", md5.Sum(Indexhtml))
-		c.Header("Cache-Control", "public, max-age=31536000")
+		// index.html has a fixed name and changes with every server upgrade.
+		// Caching it for a year kept the old page (and its old JS bundle) in
+		// browsers until the user cleared the cache by hand (upstream #908).
+		etag := `"` + fmt.Sprintf("%x", md5.Sum(Indexhtml)) + `"`
+		c.Header("Cache-Control", "no-cache")
 		c.Header("ETag", etag)
+		if c.GetHeader("If-None-Match") == etag {
+			c.Status(304)
+			return
+		}
 		c.Data(200, "text/html; charset=utf-8", Indexhtml)
 	})
 
