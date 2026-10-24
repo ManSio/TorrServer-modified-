@@ -14,6 +14,9 @@
 **Fix (v4):** Уменьшить `maxRemovePerCycle` с 15 → 5 или 10; увеличить debounce с 1 → 2 сек; рассмотреть `RLock` для `ReadAt()` или async `Release()` без блокировки.
 **Deadline:** До установки v4 на прод
 **Guard:** Тест `TestRaceCondition_ConcurrentWrites` не проверяет ReadAt() во время cleanup — нужен новый тест.
+**Уточнение 2026-10-24:** `maxRemovePerCycle` больше не участвует — вытеснение идёт байтовым бюджетом
+(KI-003, `storage.go:836`). `ReadAt`/`Release` по-прежнему под `p.mu.Lock()` (`diskpiece.go:82`, `:112`),
+поэтому статус P0 остаётся открытым; предложенный в записи фикс устарел.
 
 ## KI-003: Лимит кеша не применялся к данным удалённых из памяти торрентов (2026-10-01) — FIXED и РАЗВЁРНУТО на 192.168.2.6
 **Status:** 🟢 Развёрнуто 2026-10-01 18:44 UTC, подтверждено на прод-данных
@@ -187,3 +190,24 @@ TorrServer: build linux/amd64 ok (61 202 592 Б, sha256 `550ea84b…`), `go test
 (если PR #11 будет принят — снять replace).
 **Timeline:** T+0 ✅ развёрнуто (2026-10-17 14:07); T+30d — сверить статус PR #11 и ответ в #922;
 T+180d — пересмотреть пин/replace по факту мерджа PR.
+
+## KI-009: issue #925 — эвикция partial-куска даёт zero-read; фикс НЕ в собранном дереве (2026-10-24)
+**Status:** 🔴 Открыто. Исправление прототипировано в внешнем форке, но **не** в пине и **не** вызывается сервером.
+**Source:** https://github.com/YouROK/TorrServer/issues/925
+**Files:** `../_forks/torrent/piece.go:250` (`InvalidateStorage`, внешний форк, вне репо);
+`server/go.mod:6` (`ManSio/torrent v1.2.32-mansio.1` — метода НЕТ);
+`server/torr/storage/torrstor/piece.go:114-126` (`Release` вызывает только `SetPriority(None)` и
+`UpdateCompletion()`, `InvalidateStorage` отсутствует).
+**Root Cause:** при вытеснении partial-куска storage теряет байты, а клиент продолжает считать чанки
+полученными (`dirtyChunks`/`haveChunk`), поэтому повторное чтение отдаёт нули. Лечение — вернуть чанки
+в pending на слое библиотеки (`InvalidateStorage` = `pendAllChunkSpecs` + `cancelRequestsForPiece` +
+`tickleReaders`).
+**Факт (2026-10-24, `go test ./torr/storage/torrstor -run Issue925 -v`):**
+`BUG REPRODUCED: evicted region reads as ZEROS`; `CHARACTERIZED: #925 present`. Тесты — PASS, потому
+что фиксируют наличие бага, а не его отсутствие.
+**H5 опровергнута:** `TestIssue925ReleaseWiringWithRealTorrent` проходит, но доказывает только
+отсутствие паники/deadlock; `Release` новый метод не вызывает (`experiments/issue925/REPORT.md`).
+**Guard:** репро-тест с положительным и отрицательным контролем остаётся в дереве; критерий закрытия —
+`BUG NOT REPRODUCED` после тега `v1.2.32-mansio.2` + вызова в `Release`.
+**Timeline:** T+0 — запись создана по факту проверки; T+30d — вынести фикс в тег и `go.mod`;
+T+180d — снять replace после мерджа PR #11.
