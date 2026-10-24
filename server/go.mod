@@ -3,7 +3,7 @@ module server
 go 1.25.7
 
 replace (
-	github.com/anacrolix/torrent => github.com/ManSio/torrent v1.2.34-mansio.1
+	github.com/anacrolix/torrent => github.com/ManSio/torrent v1.2.34-mansio.2
 	github.com/anacrolix/upnp v0.1.4 => github.com/tsynik/upnp v0.1.5
 )
 
@@ -115,3 +115,5 @@ require (
 	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/tools v0.45.0 // indirect
 )
+
+replace github.com/anacrolix/utp => github.com/lampac-nextgen/utp v0.2.1
