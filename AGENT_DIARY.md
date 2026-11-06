@@ -165,3 +165,7 @@ experiment reports live under `experiments/<name>/REPORT.md`.
 - #955 RAM eviction counts the allocated buffer; #952 Torznab host without scheme.
 - KI-011 flake fixed with `Storage.WaitInitialScan()` (20/20).
 - Deferred: #933, #954 (sid), #947, WAF #943/#944/#946, web/gstreamer UI fixes, #924 (no /subs).
+
+## [2026-11-06] DEPLOY MatriX.148-150 fixes — Status: ✅ deployed
+- Binary `sha256 6855dd53…da07` over `ce047db0…`; backup `/opt/torrserver/TorrServer.bak-20261106-233106-before148`.
+- Live: `/stat` 200, malformed hash 404, set-without-sets 400, `multipathtcp` present, 0 errors/panics.

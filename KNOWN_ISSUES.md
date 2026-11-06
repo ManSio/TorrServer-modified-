@@ -312,3 +312,7 @@ Guard: `Storage.WaitInitialScan()`; `newIdleStorage` ждёт первый ск�
   web #951/#956/#959/#960; gstreamer #958.
 **Проверка:** build 0; `go test ./torr/... ./torrstor/... ./web/api/... ./torznab/... ./cmd/...` ok;
 `TestReconcileFindsPreExistingOrphans -count=20` 20/20.
+**Деплой 2026-11-06 23:31:** `sha256 6855dd53…da07`, `vcs.revision` = коммит a54ad72e; бэкап
+`/opt/torrserver/TorrServer.bak-20261106-233106-before148`. Живые проверки: `/stat` 200,
+битый hash → **404**, `{"action":"set"}` без `sets` → **400**, `multipathtcp` в бинаре,
+0 ошибок/panic. (Первый `curl` сразу после старта дал 000 — сервер ещё не слушал; повторный 200.)
