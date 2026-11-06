@@ -1,17 +1,79 @@
 #!/usr/bin/env bash
-# Set or change the TorrServer HTTP Basic Auth credentials used by nginx.
-# Usage: torrserver-auth.sh [user] [password]
-# With no password a random 20-character one is generated and printed.
+# TorrServer HTTP Basic Auth for the nginx vhost.
+#
+# Interactive (asks for login and password):
+#   sudo torrserver-auth
+#
+# Non-interactive:
+#   sudo torrserver-auth <user> <password>
+#
+# Writes /etc/nginx/.htpasswd-torrserver and reloads nginx. Requires root.
 set -euo pipefail
 
-USER_NAME="${1:-admin}"
-if [ "${2:-}" != "" ]; then
-  PASS="$2"
-else
-  PASS="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 20)"
+FILE=/etc/nginx/.htpasswd-torrserver
+
+usage() {
+  cat <<'EOF'
+Usage:
+  sudo torrserver-auth                 # ask for login and password
+  sudo torrserver-auth <user> <pass>   # set directly
+
+The password is hidden while typing and must be at least 8 characters.
+EOF
+}
+
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+  usage
+  exit 0
 fi
 
-FILE=/etc/nginx/.htpasswd-torrserver
+if [ "$(id -u)" -ne 0 ]; then
+  echo "Run as root: sudo $0" >&2
+  exit 1
+fi
+
+USER_NAME="${1:-}"
+PASS="${2:-}"
+
+if [ -z "$USER_NAME" ]; then
+  if [ ! -t 0 ]; then
+    echo "No login given and stdin is not a terminal. Use: $0 <user> <password>" >&2
+    exit 1
+  fi
+  read -r -p "Логин [admin]: " USER_NAME
+  USER_NAME="${USER_NAME:-admin}"
+fi
+
+if ! [[ "$USER_NAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  echo "Логин может содержать только A-Z a-z 0-9 . _ -" >&2
+  exit 1
+fi
+
+if [ -z "$PASS" ]; then
+  if [ ! -t 0 ]; then
+    echo "No password given and stdin is not a terminal. Use: $0 <user> <password>" >&2
+    exit 1
+  fi
+  while :; do
+    read -r -s -p "Пароль: " PASS; echo
+    read -r -s -p "Повтори пароль: " PASS2; echo
+    if [ "$PASS" != "$PASS2" ]; then
+      echo "Пароли не совпадают, попробуй ещё раз."
+      continue
+    fi
+    if [ "${#PASS}" -lt 8 ]; then
+      echo "Пароль должен быть не короче 8 символов."
+      continue
+    fi
+    break
+  done
+fi
+
+if [ "${#PASS}" -lt 8 ]; then
+  echo "Пароль должен быть не короче 8 символов." >&2
+  exit 1
+fi
+
 HASH="$(openssl passwd -apr1 "$PASS")"
 
 umask 077
@@ -28,4 +90,4 @@ chmod 640 "$FILE"
 nginx -t >/dev/null
 systemctl reload nginx
 
-printf 'user=%s\npassword=%s\n' "$USER_NAME" "$PASS"
+echo "Готово: логин '${USER_NAME}' обновлён, nginx перезагружен."
