@@ -101,3 +101,67 @@ experiment reports live under `experiments/<name>/REPORT.md`.
 - Fix: Xray `loglevel: none`; added metrics block on 127.0.0.1:11112 (stops the 2-second DEBUG line).
 - Verified: 0 ERROR/0 DEBUG in 60 s, UDP 46630 still carrying traffic, service active.
 - Trade-off: Xray core logs off; re-enable with the SQL in `experiments/xray-noise-2026-10-24/REPORT.md`.
+
+## [2026-10-24] TV CHiQ AI PONT (redwood) — Status: ✅ applied, ⚠️ one boot-drift
+- Device: `DVB92CQ`/`redwood`, UKNV.260514.001, Android 14, 1 GB, 32-bit; ADB 5555.
+- Applied: 12 safe + 6 optional disables, AdGuard Private DNS, animations 0.5, stay-awake.
+- Launcher: cleanyourtv 2.7 built from source (512 KB), stock `tvlauncher` off, theme-nature
+  (14 wallpapers, dock Lampa/Prisma/OTTPlayer/IPTV Pro/YouTube).
+- Verified by screenshots: Home after reboot, YouTube launch, Inputs (HDMI1/2, AV, Live TV),
+  Chromecast ports 8008/8009. Swap 469→~230 MB; launcher 95 MB vs stock 146 MB.
+- Guard: `com.cltv.fast` returns on every boot → `check.py --fix` after reboot.
+- Backup 232 MB + recovery JSONs + restore.ps1 under `experiments/tv-2026-10-24/`.
+- Not touched: `homwee.dynamicbacklight` (picture), `mediatek.*`, codecs, `gms`.
+- Cold boot opened Live TV (`tvcenter` → Homwee `ProtocolActivity`); fixed with PR #1445
+  `power_on_home` (launcher-only patch) + `HomeKeyService`; log now ends on `com.gathin.tvhome`.
+  Old APK kept for rollback; injected ADB keys don't disarm the helper (real remote does).
+- SmartTube 32.68 (armeabi-v7a) installed, dock now 6 apps. Server cron on 192.168.2.6
+  re-disables `cltv.fast` every 5 min (`tv-fix-cltv.sh`); verified.
+- GitHub: comments #1321/#1445, PR #1509 reworked to `rca-ai-pont` CHiQ DVB92CQ variant
+  (all checks pass; bot leans merge 65%). Factory/OTA inspected read-only only; not launched.
+- Research #2: chill-tv-launcher/UAD/SmartTube bridge/NTP; no new packages for this unit;
+  load 55 is normal, boot history only `reboot,shell`.
+- Guts audit read-only: AVB locked/green, no root; panel C320Y23-M9-FK9GPSS01, board
+  MT5867-H1V1-B2-S, tuner RDA5815M; factory `factoryPowerOnModel` + hotel receiver; OTA local
+  zip paths; tvservice squashfs root-only. No factory launch/flash.
+## [2026-10-25] XIAOMI MOEU1 INVENTORY — Status: ✅ read-only, nothing changed
+- Device: `MiTV-MOEU1` / `lalaland`, MT9689 (`merak`, `ro.hardware=mt5896`), 4×A73 1.39 GHz, 2.32 GiB visible RAM,
+  32 GB eMMC (25 GB `/data`), 55" CSOT 3840×2160@60 HDR10/HLG/HDR10+/DV, Wi-Fi6 MT7961, Android 14
+  `UKN1.240806.017.V816.0.25.6.4.UOEMBTV`. HW decoders AV1/HEVC/VP9/VVC + Dolby Vision.
+- ADB: `adb_wifi_enabled` stays 0 (no `_adb-tls-connect` in mDNS) — Xiaomi build has no working Wireless debugging;
+  `adb_enabled=1` + firmware `service.adb.tcp.port=5555` is enough. Xiaomi toggle = `Settings.Global.enableXiaomiAdb`.
+- Artifacts: `experiments/tv-2026-10-25-xiaomi-moeu1/` (REPORT.md, RESEARCH.md, collect.ps1, backup/ 48 files, 5.0 MB).
+- Guard: on platform-tools 37.0.1 `adb exec-out shell <cmd>` fails (`/system/bin/sh: shell: inaccessible`);
+  use `adb exec-out "<cmd>"`. Screenshots only via `screencap` to `/data/local/tmp` + `pull`.
+- Not verified: marketing name (X Pro 55 2026 hypothesis), Widevine level, CEC (`mIsCecAvailable=false`), standby ADB.
+
+## [2026-10-25] XIAOMI MOEU1 DEBLOAT BATCH 1 — Status: ✅ applied + reboot verified
+- Applied 11 (`pm disable-user`): telemetry (`miui.tv.analytics`, `xiaomi.statistic`, `tvqs.overseas.y24`,
+  `google.android.feedback`, `tv.feedbackconsent`), promos (`mitv.tvhome.atv`, `.michannel`, `xm.webcontent`,
+  2× autoinstalls, `partnersetup`). Kept by owner: Live TV/CI+, OTA chain, `com.mitv.dream`.
+- Recovery: `~/.cleanyourtv/recovery-192.168.2.42_5555-d5c875c4.json` (+ copy in backup/recovery), restore: `restore.ps1`.
+- Verified after reboot: 17 disabled persist, `logcat -b crash` empty, HOME = tvlauncher, DVB+ATV+3×HDMI alive.
+- Numbers: MemAvailable 891 MB → 856–1038 MB, swap 334 → 404 MB used, load 55 → 19. No confirmed RAM win yet
+  (single post-boot sample); needs ≥10 min idle × 2–3 runs.
+- Guard (script bug fixed): `$home` is a read-only PS variable — use `$homeAct`; `TV_INPUT_HARDWARE` is granted
+  to telemetry packages on Xiaomi, so the guard now skips packages in `dumpsys tv_input` packageSet instead.
+- Finding: after reboot the stock launcher shows a `VK Видео: Рекомендации` row → app channels work; Prisma has
+  `TvContract`/`PreviewProgram` strings but no row yet.
+- Not ours: `play.games`, `youtube.tvmusic`, `mitvplus` went disabled at 10:22 with Settings' AppManagementActivity
+  open — owner action via UI; recorded in the recovery JSON as `enabled`.
+
+## [2026-10-25] TVPROBE: TvProvider на Xiaomi MOEU1 — Status: ✅ measured
+- Built `experiments/tv-2026-10-25-xiaomi-moeu1/tvprobe` (10 KB, no deps), grant READ_TV_LISTINGS,
+  dump `backup/tvprobe.json` (1.2 MB): 20 channels / 688 preview / 45 watch-next.
+- Prisma publishes 5 channels + 103 previews with Russian titles, posters and `intent:` URIs → the
+  stock Google TV launcher renders only VK of them, so a custom launcher can add the rows.
+- Trap: `Manifest.permission.READ_TV_LISTINGS` and `TvContract.*.PACKAGE_NAME` did not compile against
+  this platform-34 jar; string literals work. Shell `content query` cannot see rows (no permission).
+- PII: Lampa poster URLs carry the owner e-mail (`nl.imagetmdb.com/...?email=`). Mask in any report.
+
+## [2026-11-06] UPSTREAM CATCH-UP (MatriX.148–150) — Status: ✅ critical ported
+- #957 MPTCP off (`//go:debug multipathtcp=0`) — CVE-2026-98432 RCE mitigation.
+- #941 malformed hash no longer panics; #942 `set` without `sets` → 400.
+- #955 RAM eviction counts the allocated buffer; #952 Torznab host without scheme.
+- KI-011 flake fixed with `Storage.WaitInitialScan()` (20/20).
+- Deferred: #933, #954 (sid), #947, WAF #943/#944/#946, web/gstreamer UI fixes, #924 (no /subs).

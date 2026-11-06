@@ -256,8 +256,11 @@ T+180d — снять replace после мерджа PR #11.
 build/vet/tests — зелёные. `-race` недоступен (нет cgo).
 **Red Team:** `experiments/upstream-sync-2026-10-24/RED_TEAM.md` — 2 атаки закрыты, 2 приняты как
 upstream-identical (двойной decode `%25`, `TorrentSpec` без лока).
-## KI-011: флейк — TestReconcileFindsPreExistingOrphans (2026-10-24)
-**Status:** 🟡 Наблюдаем (1 из 3 прогонов)
+## KI-011: флейк — TestReconcileFindsPreExistingOrphans (2026-10-24) — ИСПРАВЛЕНО 2026-11-06
+**Status:** 🟢 Fixed. Причина: `NewStorage` сразу запускает `cleanupLoop`, который делает
+`reconcileOrphans(true)` и мог посчитать фикстуру между её созданием и проверкой `== 0`.
+Guard: `Storage.WaitInitialScan()`; `newIdleStorage` ждёт первый скан. Проверка:
+`-count=20` — 20/20 PASS.
 **File:** `server/torr/storage/torrstor/cache_limit_test.go:246`
 **Симптом:** `setup wrong: server already counts 8388608 bytes` сразу после создания 16 файлов
 фикстуры, до `reconcileOrphans(true)`.
@@ -292,3 +295,20 @@ upstream-identical (двойной decode `%25`, `TorrentSpec` без лока).
 т.е. DHT-close отработал).
 **Не проверено:** A/B multi-peer на реальном торренте (нужен рой и замер скорости/стоек) и
 устранение zero-read #925 (нужно вытеснение куска).
+
+## KI-013: догоняем upstream MatriX.148–150 (2026-11-06)
+**Status:** 🟢 критическое портировано в этом цикле; остальное осознанно отложено.
+**Портировано:**
+- `6fd3bd82` #957 — `//go:debug multipathtcp=0` в `cmd/main.go` (снижение RCE-риска CVE-2026-98432).
+- `8a69eadd` #941 — `hashFromHex`: битый hash в API даёт not found, а не панику.
+- `af1a4917` #942 — `{"action":"set"}` без `sets` → 400, а не nil-паника.
+- `98c5af2b` #955 — эвикция в RAM-режиме считает выделенный буфер (`memCost`); у нас
+  глобальный бюджет уже считал аллокацию, добавлена согласованность per-cache.
+- `f6022df7` #952 — Torznab-хост без `http://` нормализуется в `buildAPIURL`.
+- `KI-011` — флейк reconcile закрыт `WaitInitialScan()`.
+**Отложено (не критично / большая фича):**
+- `9813a9c0` #933 torrfs одинаковые имена; `00e55966` #954 gstreamer task на сессию (sid);
+  `33950464` #947 единицы размера Torznab; WAF #943/#944/#946; #924 ReadFile (у нас нет `/subs`);
+  web #951/#956/#959/#960; gstreamer #958.
+**Проверка:** build 0; `go test ./torr/... ./torrstor/... ./web/api/... ./torznab/... ./cmd/...` ok;
+`TestReconcileFindsPreExistingOrphans -count=20` 20/20.
