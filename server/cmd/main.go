@@ -1,3 +1,8 @@
+// Disable MPTCP to reduce CVE-2026-98432 RCE risk: the bug is in IPv4 TCP, but
+// as of 2026-11-05 RCE is confirmed with MPTCP listeners.
+// reference: https://www.anthropic.com/research/discovering-vulnerabilities-with-claude
+//go:debug multipathtcp=0
+
 package main
 
 import (

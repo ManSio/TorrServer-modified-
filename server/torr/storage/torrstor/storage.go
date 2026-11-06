@@ -45,6 +45,9 @@ type Storage struct {
 	cleanupRunning  atomic.Bool  // Prevent concurrent cleanup (Thundering Herd guard)
 	// doneCh is closed by Close to stop cleanupLoop immediately.
 	doneCh chan struct{}
+	// initialScanDone is closed after the first reconcileOrphans pass, so tests
+	// can create fixtures without racing the initial disk scan.
+	initialScanDone chan struct{}
 	// wg tracks every background worker this storage owns. Close waits for it,
 	// so after Close returns nothing of this storage is running any more.
 	//
@@ -94,6 +97,7 @@ func NewStorage(capacity int64) *Storage {
 	stor.cleanupCh = make(chan struct{}, 1)
 	stor.files = newFilePool(PieceFilePoolLimit)
 	stor.doneCh = make(chan struct{})
+	stor.initialScanDone = make(chan struct{})
 	stor.wg.Add(1)
 	go stor.cleanupLoop()
 	return stor
@@ -110,6 +114,13 @@ func (s *Storage) requestCleanup() {
 
 // cleanupLoop runs in background: periodic tick + on-demand signal.
 // Heavy work (sort + remove) happens here, never under piece locks.
+// WaitInitialScan blocks until the first disk reconciliation has finished.
+// Tests use it so a fixture created after NewStorage cannot be counted by the
+// initial scan before the test's own reconcile (KI-011).
+func (s *Storage) WaitInitialScan() {
+	<-s.initialScanDone
+}
+
 func (s *Storage) cleanupLoop() {
 	// Cache data of torrents that are no longer loaded is invisible to the
 	// in-memory counters; find it before the limit is consulted for the first
@@ -118,6 +129,7 @@ func (s *Storage) cleanupLoop() {
 	// goroutine it outlived the storage and read settings.BTsets while the next
 	// owner of that global was already writing it.
 	s.reconcileOrphans(true)
+	close(s.initialScanDone)
 
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()

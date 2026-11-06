@@ -40,6 +40,7 @@ func diskTestSettings(t *testing.T) string {
 func newIdleStorage(t *testing.T, capacity int64) *Storage {
 	t.Helper()
 	stor := NewStorage(capacity)
+	stor.WaitInitialScan()
 	stor.lastCleanupTime.Store(0)
 	// Close it for the caller: an unclosed Storage keeps its cleanupLoop
 	// goroutine alive for the whole package run, and that loop reads
