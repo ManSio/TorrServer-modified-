@@ -48,6 +48,10 @@ func settings(c *gin.Context) {
 		c.Data(200, "application/json; charset=utf-8", settingsJSONBytes())
 		return
 	} else if req.Action == "set" {
+		if req.Sets == nil {
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "sets is empty"})
+			return
+		}
 		torr.SetSettings(req.Sets)
 		invalidateSettingsJSON()
 		restartServices()

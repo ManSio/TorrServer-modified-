@@ -422,7 +422,9 @@ func (c *Cache) getRemPieces() []*Piece {
 		// download may be writing the same piece (-race, 2026-10-06).
 		size, _, accessed := p.state()
 		if size > 0 {
-			fill += size
+			// Eviction input: in RAM mode the whole buffer is charged from the
+			// first written byte, not just the payload received (#955).
+			fill += p.memCost()
 		}
 		if len(ranges) > 0 {
 			if !inRanges(ranges, id) {

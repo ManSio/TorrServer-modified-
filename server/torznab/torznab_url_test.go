@@ -14,6 +14,7 @@ func TestBuildAPIURLNormalizesHost(t *testing.T) {
 		{"http://indexer:9117/api", "http://indexer:9117/api"},
 		{"http://indexer:9117/api/", "http://indexer:9117/api"},
 		{"  http://indexer:9117/api/  ", "http://indexer:9117/api"},
+		{"indexer:9117/torznab", "http://indexer:9117/torznab/api"},
 	}
 	for _, c := range cases {
 		u, err := buildAPIURL(c.in)
