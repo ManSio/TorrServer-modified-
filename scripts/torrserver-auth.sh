@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# TorrServer HTTP Basic Auth for the nginx vhost.
+# TorrServer built-in HTTP Basic Auth (server/web/auth/auth.go).
 #
 # Interactive (asks for login and password):
 #   sudo torrserver-auth
@@ -7,10 +7,11 @@
 # Non-interactive:
 #   sudo torrserver-auth <user> <password>
 #
-# Writes /etc/nginx/.htpasswd-torrserver and reloads nginx. Requires root.
+# Writes /var/lib/torrserver/accs.db and restarts TorrServer (auth is read at
+# startup). Requires root.
 set -euo pipefail
 
-FILE=/etc/nginx/.htpasswd-torrserver
+FILE=/var/lib/torrserver/accs.db
 
 usage() {
   cat <<'EOF'
@@ -74,20 +75,15 @@ if [ "${#PASS}" -lt 8 ]; then
   exit 1
 fi
 
-HASH="$(openssl passwd -apr1 "$PASS")"
-
-umask 077
-touch "$FILE"
-if grep -q "^${USER_NAME}:" "$FILE"; then
-  sed -i "s|^${USER_NAME}:.*|${USER_NAME}:${HASH}|" "$FILE"
+install -d -o torrserver -g torrserver /var/lib/torrserver
+TMP="$(mktemp)"
+if [ -s "$FILE" ]; then
+  jq --arg u "$USER_NAME" --arg p "$PASS" '.[$u] = $p' "$FILE" > "$TMP"
 else
-  printf '%s:%s\n' "$USER_NAME" "$HASH" >> "$FILE"
+  jq -n --arg u "$USER_NAME" --arg p "$PASS" '{($u): $p}' > "$TMP"
 fi
+install -m 600 -o torrserver -g torrserver "$TMP" "$FILE"
+rm -f "$TMP"
 
-chown root:www-data "$FILE" 2>/dev/null || true
-chmod 640 "$FILE"
-
-nginx -t >/dev/null
-systemctl reload nginx
-
-echo "Готово: логин '${USER_NAME}' обновлён, nginx перезагружен."
+systemctl restart torrserver
+echo "Готово: логин '${USER_NAME}' обновлён, TorrServer перезапущен."
