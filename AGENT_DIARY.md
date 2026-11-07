@@ -176,3 +176,8 @@ experiment reports live under `experiments/<name>/REPORT.md`.
 - #949: reader uses ReadContext with req.Context(), so a disconnected client cancels a read
   waiting for a piece; compiled and deployed, no dedicated cancellation test.
 - Servers: prod 192.168.2.6 and 212.113.101.151 both on 1e68436c…f8e2, active, no errors.
+
+## [2026-11-07] WEB/API TESTS — Status: ✅ 3.0% → 17.5%
+- Added validation/rejection tests for search, TMDB/GStreamer settings, storage settings, cache/torrents malformed hashes, stream/play params, viewed hash.
+- Harness lesson: `c.Status()` does not flush `httptest.ResponseRecorder`, so assert `c.Writer.Status()` (not `w.Code`) for status-only handlers.
+- Next targets: settings set/def with a real BTServer, torrents list/add with a fake helper, viewed list with a temp DB.
