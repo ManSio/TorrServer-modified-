@@ -35,8 +35,8 @@ type Storage struct {
 	// files caches open piece-file handles. Opening and closing a file per
 	// piece read/write was one of the largest CPU costs while downloading;
 	// see filepool.go for the measurement.
-	files         *filePool
-	mu            sync.Mutex
+	files *filePool
+	mu    sync.Mutex
 	// orphanDirs is the last disk scan of TorrentsSavePath: size + newest
 	// mtime per hash dir that has no cache in s.caches.
 	orphanDirs      []orphanDir
@@ -57,7 +57,7 @@ type Storage struct {
 	// inside whichever test happened to run. It was also wrong in production:
 	// for up to a tick after Close the loop could still reconcile and delete
 	// cache directories of a storage that was already shut down.
-	wg sync.WaitGroup
+	wg              sync.WaitGroup
 	lastCleanupTime atomic.Int64 // Unix timestamp of last cleanup (debounce)
 	// Diagnostics for the last eviction pass: how many bytes the viewers
 	// protect and how many windows there were. Exposed so a stuck cache can be

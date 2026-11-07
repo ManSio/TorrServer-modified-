@@ -11,11 +11,11 @@ import (
 // must not be told the opposite of what the client does.
 func TestEncryptionPolicy(t *testing.T) {
 	cases := []struct {
-		name           string
-		force          bool
-		disable        bool
-		wantDisabled   bool
-		wantForced     bool
+		name         string
+		force        bool
+		disable      bool
+		wantDisabled bool
+		wantForced   bool
 	}{
 		{"neither set: anacrolix's own default", false, false, false, false},
 		{"disable only", false, true, true, false},

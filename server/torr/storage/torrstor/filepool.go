@@ -40,10 +40,10 @@ type filePool struct {
 }
 
 type pooledFile struct {
-	path  string
-	f     *os.File
-	uses  int
-	elem  *list.Element
+	path string
+	f    *os.File
+	uses int
+	elem *list.Element
 }
 
 // accessClass is the intent behind a get(), collapsed from the os flags.
