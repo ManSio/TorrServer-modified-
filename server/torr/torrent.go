@@ -299,7 +299,7 @@ func (t *Torrent) progressEvent() {
 		t.BytesWrittenData = st.BytesWritten.Int64()
 
 		if t.cache != nil {
-			t.PreloadedBytes = t.cache.GetState().Filled
+			t.PreloadedBytes = t.cache.FilledBytes()
 		}
 	} else {
 		t.DownloadSpeed = 0
@@ -398,7 +398,7 @@ func (t *Torrent) updateRA() {
 			if fileEnd <= 0 {
 				fileEnd = t.Length()
 			}
-			free := t.cache.GetCapacity() - t.cache.GetState().Filled
+			free := t.cache.GetCapacity() - t.cache.FilledBytes()
 			unboundedMB := torrstor.UnboundedPauseWindowMB(
 				fileEnd,
 				free,

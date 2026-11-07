@@ -120,3 +120,31 @@ func BenchmarkCacheGetRemPieces64(b *testing.B) {
 		}
 	}
 }
+
+func BenchmarkCacheGetState64(b *testing.B) {
+	c, buf := benchCache(b, false, 64)
+	for i := 0; i < 64; i++ {
+		if _, err := c.pieces[i].WriteAt(buf, 0); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = c.GetState()
+	}
+}
+
+func BenchmarkCacheFilledBytes64(b *testing.B) {
+	c, buf := benchCache(b, false, 64)
+	for i := 0; i < 64; i++ {
+		if _, err := c.pieces[i].WriteAt(buf, 0); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = c.FilledBytes()
+	}
+}

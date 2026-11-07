@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/metainfo"
@@ -29,6 +30,33 @@ type File struct {
 
 var mu sync.Mutex
 
+// ListTorrent is called by every /torrents list and by the web UI polls. Each
+// call used to decode every stored torrent, including its metadata, which
+// showed up as a multi-megabyte allocation in the heap profile. The result is
+// cached for a short TTL and invalidated by AddTorrent/RemTorrent, so a poll
+// costs a slice copy instead of a full DB decode.
+const listTorrentCacheTTL = time.Second
+
+var listTorrentCache struct {
+	sync.Mutex
+	list []*TorrentDB
+	at   time.Time
+}
+
+func invalidateListTorrentCache() {
+	listTorrentCache.Lock()
+	listTorrentCache.list = nil
+	listTorrentCache.at = time.Time{}
+	listTorrentCache.Unlock()
+}
+
+func cloneTorrentList(list []*TorrentDB) []*TorrentDB {
+	if list == nil {
+		return nil
+	}
+	return append([]*TorrentDB(nil), list...)
+}
+
 func AddTorrent(torr *TorrentDB) {
 	list := ListTorrent()
 	mu.Lock()
@@ -51,9 +79,18 @@ func AddTorrent(torr *TorrentDB) {
 		}
 	}
 	mu.Unlock()
+	invalidateListTorrentCache()
 }
 
 func ListTorrent() []*TorrentDB {
+	listTorrentCache.Lock()
+	if listTorrentCache.list != nil && time.Since(listTorrentCache.at) < listTorrentCacheTTL {
+		cached := cloneTorrentList(listTorrentCache.list)
+		listTorrentCache.Unlock()
+		return cached
+	}
+	listTorrentCache.Unlock()
+
 	// Use read lock to prevent migration during read
 	dbMigrationLock.RLock()
 	defer dbMigrationLock.RUnlock()
@@ -76,11 +113,16 @@ func ListTorrent() []*TorrentDB {
 	sort.Slice(list, func(i, j int) bool {
 		return list[i].Timestamp > list[j].Timestamp
 	})
-	return list
+	listTorrentCache.Lock()
+	listTorrentCache.list = list
+	listTorrentCache.at = time.Now()
+	listTorrentCache.Unlock()
+	return cloneTorrentList(list)
 }
 
 func RemTorrent(hash metainfo.Hash) {
 	mu.Lock()
 	tdb.Rem("Torrents", hash.HexString())
 	mu.Unlock()
+	invalidateListTorrentCache()
 }
