@@ -25,3 +25,5 @@ report says what it proves.
 
 | E-009 | Upstream catch-up MatriX.148–150 | 2026-11-06 | `go test ./torr/... ./torr/storage/torrstor/... ./web/api/... ./torznab/... ./cmd/...`; reconcile `-count=20` | all ok; 20/20 | #957/#941/#942/#955/#952 ported; #954/#933/WAF deferred |
 | E-010 | Upstream audit 17.10–07.11 | 2026-11-07 | `go test ./torr/... ./torrfs/... ./torznab/... ./web/api/...`; `go build ./...` | all ok; deployed `1e68436c…` | #949/#933/#947 ported; #954/#958 N/A (no gst); WAF/subs N/A |
+
+| E-011 | Core benchmarks baseline (torrstor/torr) | 2026-11-07 | `go test -run '^$' -bench . -benchmem ./torr/storage/torrstor ./torr` | MemWrite 4.9µs/256K; MemRead64K 1.5µs; DiskWrite 11.8µs; DiskRead64K 4.8µs; evict64 2.3µs/9 allocs; buffered 6.8µs vs raw 1.2µs (memory source) | baseline; no optimization until a profile shows a hot spot |
