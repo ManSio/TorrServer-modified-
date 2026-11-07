@@ -181,3 +181,8 @@ experiment reports live under `experiments/<name>/REPORT.md`.
 - Added validation/rejection tests for search, TMDB/GStreamer settings, storage settings, cache/torrents malformed hashes, stream/play params, viewed hash.
 - Harness lesson: `c.Status()` does not flush `httptest.ResponseRecorder`, so assert `c.Writer.Status()` (not `w.Code`) for status-only handlers.
 - Next targets: settings set/def with a real BTServer, torrents list/add with a fake helper, viewed list with a temp DB.
+
+## [2026-11-07] AUTH + LINK TESTS — Status: ✅
+- `web/auth`: BasicAuth/CheckAuth/SetupAuth, missing and real accs.db — 0% → 95.5%.
+- `web/api/utils`: magnet, bare hash, unknown scheme, invalid magnet, bad torrs token — 0% → 19.4%.
+- Still untested: settings set/def, torrents list/add, viewed list (need a DB/BTServer harness).

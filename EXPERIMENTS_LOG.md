@@ -28,3 +28,4 @@ report says what it proves.
 
 | E-011 | Core benchmarks baseline (torrstor/torr) | 2026-11-07 | `go test -run '^$' -bench . -benchmem ./torr/storage/torrstor ./torr` | MemWrite 4.9µs/256K; MemRead64K 1.5µs; DiskWrite 11.8µs; DiskRead64K 4.8µs; evict64 2.3µs/9 allocs; buffered 6.8µs vs raw 1.2µs (memory source) | baseline; no optimization until a profile shows a hot spot |
 | E-012 | web/api handler tests | 2026-11-07 | `go test -cover ./web/api` | ok; coverage 3.0% → 17.5% | disabled search, settings validation, malformed hashes, missing stream/play params, viewed hash; status-only handlers need `c.Writer.Status()` |
+| E-013 | web/auth + link parsing tests | 2026-11-07 | `go test -cover ./web/auth ./web/api/utils` | auth 0% → 95.5%; link 0% → 19.4% | BasicAuth/SetupAuth, magnet/bare hash/unknown scheme/bad torrs token |
