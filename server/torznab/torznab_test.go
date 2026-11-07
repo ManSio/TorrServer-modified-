@@ -1,4 +1,4 @@
-﻿package torznab
+package torznab
 
 import (
 	"net/http"
