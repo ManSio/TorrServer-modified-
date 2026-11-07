@@ -341,6 +341,20 @@ func (c *Cache) AdjustRA(readahead int64) {
 	}
 }
 
+// FilledBytes is the logical number of payload bytes in the cache, without
+// building the per-piece map GetState allocates. progressEvent and the
+// background fetch only need this number.
+func (c *Cache) FilledBytes() int64 {
+	var fill int64
+	for _, p := range c.getPieces() {
+		size, _, _ := p.state()
+		if size > 0 {
+			fill += size
+		}
+	}
+	return fill
+}
+
 func (c *Cache) GetState() *state.CacheState {
 	cState := new(state.CacheState)
 
