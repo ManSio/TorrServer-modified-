@@ -24,3 +24,4 @@ report says what it proves.
 | E-008 | x-ui/Xray log noise (212.113.101.151) | 2026-10-24 | access log + IPv6 probes + loglevel/metrics experiment | 0 ERROR/0 DEBUG in 60 s; UDP 46630 active | noise = client per-connection failures; loglevel none + metrics block |
 
 | E-009 | Upstream catch-up MatriX.148–150 | 2026-11-06 | `go test ./torr/... ./torr/storage/torrstor/... ./web/api/... ./torznab/... ./cmd/...`; reconcile `-count=20` | all ok; 20/20 | #957/#941/#942/#955/#952 ported; #954/#933/WAF deferred |
+| E-010 | Upstream audit 17.10–07.11 | 2026-11-07 | `go test ./torr/... ./torrfs/... ./torznab/... ./web/api/...`; `go build ./...` | all ok; deployed `1e68436c…` | #949/#933/#947 ported; #954/#958 N/A (no gst); WAF/subs N/A |

@@ -169,3 +169,10 @@ experiment reports live under `experiments/<name>/REPORT.md`.
 ## [2026-11-06] DEPLOY MatriX.148-150 fixes — Status: ✅ deployed
 - Binary `sha256 6855dd53…da07` over `ce047db0…`; backup `/opt/torrserver/TorrServer.bak-20261106-233106-before148`.
 - Live: `/stat` 200, malformed hash 404, set-without-sets 400, `multipathtcp` present, 0 errors/panics.
+
+## [2026-11-07] UPSTREAM AUDIT 3 WEEKS — Status: ✅ #949/#933/#947 ported, deployed
+- #954/#958 skipped: gstreamer is behind the gst build tag and this binary has no gst.
+- WAF (#943/#944/#946), /subs (#924) and web UI are not in our build.
+- #949: reader uses ReadContext with req.Context(), so a disconnected client cancels a read
+  waiting for a piece; compiled and deployed, no dedicated cancellation test.
+- Servers: prod 192.168.2.6 and 212.113.101.151 both on 1e68436c…f8e2, active, no errors.
