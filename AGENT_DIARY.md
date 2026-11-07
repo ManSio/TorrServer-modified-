@@ -186,3 +186,8 @@ experiment reports live under `experiments/<name>/REPORT.md`.
 - `web/auth`: BasicAuth/CheckAuth/SetupAuth, missing and real accs.db — 0% → 95.5%.
 - `web/api/utils`: magnet, bare hash, unknown scheme, invalid magnet, bad torrs token — 0% → 19.4%.
 - Still untested: settings set/def, torrents list/add, viewed list (need a DB/BTServer harness).
+
+## [2026-11-07] API HARNESS — Status: ✅ 17.5% → 19.2%
+- `TestMain` initializes `settings.InitSets` in a temp dir and `torr.InitApiHelper(torr.NewBTS())`.
+- Covered: torrents list (empty + DB entry), settings get, viewed set/list/rem lifecycle.
+- `settings set/def` still avoided: they start a real torrent client/network; needs a stub seam before testing.
