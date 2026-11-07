@@ -191,3 +191,10 @@ experiment reports live under `experiments/<name>/REPORT.md`.
 - `TestMain` initializes `settings.InitSets` in a temp dir and `torr.InitApiHelper(torr.NewBTS())`.
 - Covered: torrents list (empty + DB entry), settings get, viewed set/list/rem lifecycle.
 - `settings set/def` still avoided: they start a real torrent client/network; needs a stub seam before testing.
+
+## [2026-11-07] PERF: ListTorrent cache + FilledBytes — Status: ✅ deployed e412d232
+- Bench: ListTorrent 134µs → 138ns, 44KB/464 allocs → 416B/1; FilledBytes 6.6µs → 1.1µs, 13KB/15 → 0.
+- Prod pprof before: 12.27s samples/30s, GetState 7.3%. After: 5.78s, GetState gone from top. Not a clean A/B (restart changed traffic/11 DB torrents).
+- uTP still the top CPU: connection.writer 28.7%, utp.send 23.5%, socket.writeTo 21.8%; 91 trackerScraper goroutines.
+- btrfs: `chattr +C` and `mount -o remount,noautodefrag` **blocked**: sudo asks for a password on 192.168.2.6. Owner action needed.
+- Cache at 131.5/146.7 GiB (89.6%) — close to the 90% target.
