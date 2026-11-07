@@ -1,0 +1,62 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Mac suff
+.DS_Store
+
+# Test binary, build with `go test -c`
+*.test
+
+# Mac stuff
+.DS_Store
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+TorrServer.iml
+.idea/
+.vscode
+
+# Agent working state (see AGENTS.md §4)
+.agent_task_state.md
+
+src/github.com/
+src/golang.org/
+src/bazil.org/
+src/gopkg.in/
+src/go.opencensus.io/
+pkg/
+bin/
+dist/
+toolchains/
+/src/crawshaw.io/
+/src/go.etcd.io/
+/src/google.golang.org/
+/toolchain/
+/server/web/pages/template/pages/msx
+
+# Include bundled GStreamer runtimes
+!/server/gstreamer/gst-libs/
+!/server/gstreamer/gst-libs/**/
+!/server/gstreamer/gst-libs/**
+
+# Secrets and personal data: never commit these
+**/accs.db
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/.htpasswd*
+**/torrserver-auth.txt
+
+# Raw experiment corpora may contain personal data (device dumps, session logs)
+/experiments/tv-*/
+/experiments/oc-failure-analysis/
+/experiments/zed-failure-analysis/
+/experiments/*/frozen/*.jsonl
+/experiments/*/report/*.jsonl
+/experiments/*/*.zip
