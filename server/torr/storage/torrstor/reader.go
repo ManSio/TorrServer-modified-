@@ -1,6 +1,7 @@
 package torrstor
 
 import (
+	"context"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -30,6 +31,8 @@ type Reader struct {
 	// checkReader mistakes a busy reader for an abandoned one and
 	// readerOff seeks it to 0 mid-read (upstream PR #876 port).
 	inFlight int
+	// ctx cancels a read waiting for a piece after the client disconnects.
+	ctx context.Context
 	// Debug telemetry. Atomic: read from /stat while the stream goroutine
 	// writes them, so no reader mutex is involved.
 	readCalls atomic.Uint64
@@ -44,11 +47,20 @@ func newReader(file *torrent.File, cache *Cache) *Reader {
 	r.SetReadahead(0)
 	r.cache = cache
 	r.isUse = true
+	r.ctx = context.Background()
 
 	cache.muReaders.Lock()
 	cache.readers[r] = struct{}{}
 	cache.muReaders.Unlock()
 	return r
+}
+
+// SetContext sets the context that cancels a read waiting for a piece.
+// Call it before the first read.
+func (r *Reader) SetContext(ctx context.Context) {
+	if ctx != nil {
+		r.ctx = ctx
+	}
 }
 
 func (r *Reader) Seek(offset int64, whence int) (n int64, err error) {
@@ -84,7 +96,11 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 	if r.file.Torrent() != nil && r.file.Torrent().Info() != nil {
 		r.readerOn()
 		r.beginIO()
-		n, err = r.Reader.Read(p)
+		ctx := r.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		n, err = r.Reader.ReadContext(ctx, p)
 		r.endIO()
 		r.readCalls.Add(1)
 		r.readBytes.Add(uint64(max(n, 0)))
