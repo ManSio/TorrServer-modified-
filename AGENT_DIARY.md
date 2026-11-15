@@ -198,3 +198,18 @@ experiment reports live under `experiments/<name>/REPORT.md`.
 - uTP still the top CPU: connection.writer 28.7%, utp.send 23.5%, socket.writeTo 21.8%; 91 trackerScraper goroutines.
 - btrfs: `chattr +C` and `mount -o remount,noautodefrag` **blocked**: sudo asks for a password on 192.168.2.6. Owner action needed.
 - Cache at 131.5/146.7 GiB (89.6%) — close to the 90% target.
+
+## [2026-11-15] UPSTREAM 07→15.11 + CONNECT/POSTER FIXES — Status: ✅ tests, not deployed
+- Symptom: startup/settings save hung offline; valid posters reported broken.
+- Root cause: `Connect` → `configure(context.TODO())` → `publicip.Get4/6` without a deadline;
+  `CheckImgUrl` used the default `Go-http-client` agent (fastpic answers 404).
+- Fix: `resolvePublicIP` (3 s) + test seam; `User-Agent: Mozilla/5.0` on the poster check.
+- Self-correction: "missing complete-first eviction" was WRONG — `storage.go evictPass` already
+  does it (`TestEvictsCompleteFirst`); the sort in `getRemPieces` feeds nothing.
+- #925 still mitigated by `InvalidateStorage` in `Piece.Release`; the raw MemPiece repro
+  (`issue925_repro_test.go`) shows zeros only when `cache.torrent == nil`, i.e. not the shipped path.
+- Experiment #968: 92 245 pieces → `getRemPieces` 12.0 ms, `GetState` 4.3 ms per pass here;
+  prod `[CACHE] scan` 0.90–0.96 s every 5 min at 112 GiB. Not ported (author's patch rebase needed).
+- Live 192.168.2.6: MatriX.144, RSS 60 MB (anon 47 MB), cgroup 1.34 GB is page cache, no OOM/panic.
+- `-race` not run: no gcc/cgo on this box.
+
