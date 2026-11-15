@@ -330,3 +330,23 @@ Guard: `Storage.WaitInitialScan()`; `newIdleStorage` ждёт первый ск�
 **Проверка:** build 0; `torrfs`/`torznab`/`torr`/`torrstor` зелёные; #949 компилируется,
 отдельного теста на отмену чтения нет.
 **Деплой:** оба сервера `sha256 1e68436c…f8e2`; прод active/0 ошибок, новый 401/200 с auth.
+
+## KI-016: аудит issues/PR upstream 07–15.11.2026 + два фикса (2026-11-15)
+**Status:** 🟢 две правки внесены в этом цикле; `#968` открыт (M).
+**Портировано:** `83c9fae7` — `resolvePublicIP` с таймаутом 3 с (раньше `configure(context.TODO())`
+держал `Connect` на недоступном резолвере: старт и каждое сохранение настроек);
+`b28d5494` — `User-Agent: Mozilla/5.0` в `CheckImgUrl` (fastpic и подобные отдают 404
+дефолтному `Go-http-client`, валидный постер помечался битым).
+**Проверено, что уже есть:** порядок вытеснения complete-first (`storage.go:evictPass`,
+`TestEvictsCompleteFirst`), `#925` — `InvalidateStorage()` в `Piece.Release` (форк
+`v1.2.34-mansio.2`), `#933/#947/#949/#941/#942/#955/#952/#957`.
+**Открыто:**
+- `#968` — стоимость уборки кэша линейна по числу кусков. Замер (dev, пустые куски, UseDisk):
+  92 245 кусков → `getRemPieces` 12.0 ms, `GetState` 4.3 ms за проход. Прод: строка
+  `[CACHE] scan` 0.90–0.96 s каждые 5 мин при 112 GiB / 11 каталогах. Патч автора (набор
+  «кусков с буфером» + лимит переприоритизации) не портирован.
+- `#974` (PR open) «require credentials on public media routes» — перепроверить, что наши
+  `/stream`, `/play`, `/gst` не открыты в обход auth.
+**Живой 192.168.2.6:** MatriX.144, uptime 6d13h; Cache 111.1 / 146.7 GiB (75.7 %, всё на диске,
+in-memory 0 B); VmRSS 60 MB, RssAnon 47 MB, HWM 193 MB, swap 0 — 1.34 GB в cgroup это page cache,
+не утечка; panic/OOM в journal и `server.log` нет.

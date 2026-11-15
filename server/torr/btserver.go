@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"sync"
+	"time"
 
 	"github.com/anacrolix/publicip"
 	"github.com/anacrolix/torrent"
@@ -65,7 +66,7 @@ func (bt *BTServer) Connect() error {
 	bt.mu.Lock()
 	defer bt.mu.Unlock()
 	var err error
-	bt.configure(context.TODO())
+	bt.configure()
 	bt.client, err = torrent.NewClient(bt.config)
 	bt.torrents = make(map[metainfo.Hash]*Torrent)
 	InitApiHelper(bt)
@@ -83,7 +84,32 @@ func (bt *BTServer) Disconnect() {
 	}
 }
 
-func (bt *BTServer) configure(ctx context.Context) {
+// publicIPTimeout bounds the public address lookups. Without it Connect blocked
+// for as long as the lookup host was unreachable, which is startup and every
+// settings save.
+var publicIPTimeout = 3 * time.Second
+
+// publicIPLookup is publicip.Get4/Get6 behind a seam: tests replace it to prove
+// the lookup is cancelled by the deadline instead of hanging Connect.
+var publicIPLookup = func(ctx context.Context, v6 bool) (net.IP, error) {
+	if v6 {
+		return publicip.Get6(ctx)
+	}
+	return publicip.Get4(ctx)
+}
+
+// publicIPContext is the deadline shared by both lookups, so a box whose IPv4
+// and IPv6 lookups both hang waits publicIPTimeout, not twice that.
+func publicIPContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), publicIPTimeout)
+}
+
+// resolvePublicIP runs one lookup under the caller's deadline.
+func resolvePublicIP(ctx context.Context, v6 bool) (net.IP, error) {
+	return publicIPLookup(ctx, v6)
+}
+
+func (bt *BTServer) configure() {
 	blocklist, _ := utils.ReadBlockedIP()
 	bt.config = torrent.NewDefaultClientConfig()
 
@@ -162,13 +188,15 @@ func (bt *BTServer) configure(ctx context.Context) {
 	var err error
 
 	// set public IPv4
+	ipCtx, cancelIP := publicIPContext()
+	defer cancelIP()
 	if settings.PubIPv4 != "" {
 		if ip4 := net.ParseIP(settings.PubIPv4); ip4.To4() != nil && !isPrivateIP(ip4) {
 			bt.config.PublicIp4 = ip4
 		}
 	}
 	if bt.config.PublicIp4 == nil {
-		bt.config.PublicIp4, err = publicip.Get4(ctx)
+		bt.config.PublicIp4, err = resolvePublicIP(ipCtx, false)
 		if err != nil {
 			log.Printf("error getting public ipv4 address: %v", err)
 		}
@@ -187,7 +215,7 @@ func (bt *BTServer) configure(ctx context.Context) {
 		}
 	}
 	if bt.config.PublicIp6 == nil && settings.BTsets.EnableIPv6 {
-		bt.config.PublicIp6, err = publicip.Get6(ctx)
+		bt.config.PublicIp6, err = resolvePublicIP(ipCtx, true)
 		if err != nil {
 			log.Printf("error getting public ipv6 address: %v", err)
 		}
