@@ -219,4 +219,20 @@ experiment reports live under `experiments/<name>/REPORT.md`.
   `clearPriority` calls `PieceState` per piece on every Seek/Close; `[CACHE] scan` 0.9 s is a different
   subsystem (directory reconcile), earlier record mixed them up.
 
+## [2026-11-15] #968: priority set + pass coalescing — Status: ✅ deployed a0c44b27
+- Root cause: `clearPriority` walked every piece and asked `PieceState` (client lock) on each;
+  a pass was spawned per `Reader.Seek`/`Reader.Close`, so scrubbing ran dozens a minute.
+- Fix B: `Cache.prioritized` (ids this cache raised, under `muPrio`); clear walks only it; entries
+  dropped in `removePiece`, `Close`, `SetTorrent` (only when the torrent actually changes).
+- Fix C: `requestPass()` + one `passWorker` per cache, `passInterval=150ms`, chan cap 1 coalesces
+  bursts and keeps the last request; the worker stops on `Close` (`closeCh`).
+- D was a false alarm: `CacheStateTTL=0` means *default 1 s* (`CacheStateTTLDuration`), TTL was on.
+- Review found 2 blockers (worker outlived the cache; `SetTorrent(same)` wiped the raised set and
+  left priorities stuck) — both fixed, each with a test that reddens on the mutation.
+- Bench 92 245 pieces: 88.7 ms → 13.6–24.9 ms per pass. Tests: torrstor 17.1 s, torr 4.3 s,
+  web/api ok, vet clean. `-race` untested: no gcc/cgo.
+- Deployed to 192.168.2.6 (md5 `d535e604…4db5`). Live: get 24 GB torrent → 22.4 GiB cache,
+  RSS 71 MB; drop → 0 B, RSS 58 MB, 0 panics.
+
+
 
