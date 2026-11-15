@@ -243,7 +243,11 @@ experiment reports live under `experiments/<name>/REPORT.md`.
   Записана как KI-017, объём фикса 191 обращение / 45 файлов.
 - upstream #977: `releases/latest` = Silo.2 (новый движок, только `-c config.yaml`), а
   `installTorrServerLinux.sh` генерит `--port/--path/--logpath` → сервис падает с кодом 2.
-  Наш `installTorrServerLinux.sh` указывает на YouROK и качает `latest` → тот же дефект у нас.
+  Наш установщик указывал на YouROK и качал `latest` → тот же дефект; **исправлено**:
+  `selectReleaseTag` берёт новейший тег канала (MatriX.150), URL пинится к тегу, при отсутствии
+  канала — выход с сообщением вместо `/releases/latest`; офлайн-тест `scripts/test_install_channel.sh`.
+  Установщики были untracked — теперь в индексе (осознанно).
+
 
 
 
