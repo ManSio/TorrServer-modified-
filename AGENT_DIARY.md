@@ -212,4 +212,11 @@ experiment reports live under `experiments/<name>/REPORT.md`.
   prod `[CACHE] scan` 0.90–0.96 s every 5 min at 112 GiB. Not ported (author's patch rebase needed).
 - Live 192.168.2.6: MatriX.144, RSS 60 MB (anon 47 MB), cgroup 1.34 GB is page cache, no OOM/panic.
 - `-race` not run: no gcc/cgo on this box.
+- Deploy 2026-11-15 09:02: `46393a5f` on 192.168.2.6 (build `-ldflags "-s -w"`, `CGO_ENABLED=0`, linux/amd64,
+  md5 `88c63353…1e84`, backup `TorrServer.bak-20261115-090220-before46393a5f`). Live: `/` 200, `/echo` MatriX.144,
+  `/stat` 200, bad hash 404, `settings get` 200, 0 panic, RSS 62 MB.
+- #968 re-check with a real client: 92 245 pieces → 88.7 ms/pass (0.87–1.42 µs/piece) because
+  `clearPriority` calls `PieceState` per piece on every Seek/Close; `[CACHE] scan` 0.9 s is a different
+  subsystem (directory reconcile), earlier record mixed them up.
+
 
