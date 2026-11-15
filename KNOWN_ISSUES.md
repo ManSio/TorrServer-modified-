@@ -354,3 +354,24 @@ Guard: `Storage.WaitInitialScan()`; `newIdleStorage` ждёт первый ск�
 **Живой 192.168.2.6:** MatriX.144, uptime 6d13h; Cache 111.1 / 146.7 GiB (75.7 %, всё на диске,
 in-memory 0 B); VmRSS 60 MB, RssAnon 47 MB, HWM 193 MB, swap 0 — 1.34 GB в cgroup это page cache,
 не утечка; panic/OOM в journal и `server.log` нет.
+
+## KI-017: гонка на `settings.BTsets` (найдена `-race` 2026-11-15) — 🟡 ОТКРЫТО
+**Status:** 🟡 открыто; это НЕ регресс #968, гонка предсуществующая.
+**Как нашли:** 설치ли MinGW-w64 (WinLibs 16.2.0) и прогнали `CGO_ENABLED=1 go test -race`.
+`go test -race ./torr/storage/torrstor` даёт 3 отчёта (TestFilledIsNotTheFilledSize,
+TestStagedBytes, TestWatchedFileEndBytes), все одного класса:
+`Write: test sets settings.BTsets` ↔ `Read: diskMode() storage.go:233` из
+`reconcileOrphans` в фоновой `cleanupLoop` (storage.go:102).
+**Почему это не только тесты:** в проде `settings.SetBTSets` присваивает этот же глобальный
+указатель из HTTP-хендлера, а фон читает его без синхронизации; кроме присваивания есть
+мутации «опубликованной» структуры на живую: `torr/utils/torrent.go:49`
+(`DefaultTrackers` из горутины обновления трекеров), `web/server.go:107,116` (SslCert/SslKey),
+`settings/settings.go:78-79,303,367` (флаги хранилища). 191 обращение в 45 файлах.
+**Риск:** на amd64 выровненная запись указателя атомарна, поэтому «рваного» указателя нет;
+риск — чтение полей структуры в момент их мутации (например `diskMode()` читает `UseDisk`
+во время `SetBTSets`). Формально UB, практически — редкие неверные решения о режиме кэша.
+**Рекомендация:** publish-immutable: копия настроек + `atomic.Pointer[BTSets]`, все чтения через
+`settings.Snapshot()`, мутации — только в копии. Объём: 191 site / 45 файлов, механическая
+правка + тесты (M/L).
+**Проверено, что чисто:** `-race` на `./torr` (6.2 s), `./web/api` (1.3 s), `./settings` (1.1 s)
+и на 8 тестах изменённого кэша ×3 — отчётов нет.

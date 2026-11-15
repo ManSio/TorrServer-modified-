@@ -234,5 +234,17 @@ experiment reports live under `experiments/<name>/REPORT.md`.
 - Deployed to 192.168.2.6 (md5 `d535e604…4db5`). Live: get 24 GB torrent → 22.4 GiB cache,
   RSS 71 MB; drop → 0 B, RSS 58 MB, 0 panics.
 
+## [2026-11-15] RACE TOOLCHAIN + upstream #977 — Status: ✅ -race works, 1 pre-existing race
+- Установлен MinGW-w64 (WinLibs 16.2.0, UCRT): `CGO_ENABLED=1` и `go test -race` теперь работают.
+  gcc не в PATH: `%LOCALAPPDATA%\Microsoft\WinGet\Packages\BrechtSanders.WinLibs.POSIX.UCRT_…\mingw64\bin`.
+- `-race`: `./torr`, `./web/api`, `./settings` и 8 тестов изменённого кэша (×3) — чисто.
+- Найдена предсуществующая гонка `settings.BTsets` (запись из SetBTSets/тестов ↔ чтение
+  `diskMode()` в `cleanupLoop`) + живые мутации полей (`torr/utils/torrent.go:49`, `web/server.go:107`).
+  Записана как KI-017, объём фикса 191 обращение / 45 файлов.
+- upstream #977: `releases/latest` = Silo.2 (новый движок, только `-c config.yaml`), а
+  `installTorrServerLinux.sh` генерит `--port/--path/--logpath` → сервис падает с кодом 2.
+  Наш `installTorrServerLinux.sh` указывает на YouROK и качает `latest` → тот же дефект у нас.
+
+
 
 
