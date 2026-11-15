@@ -54,6 +54,16 @@ func (p *Piece) ReadAt(b []byte, off int64) (n int, err error) {
 	}
 }
 
+// memCost is what this piece costs the cache budget. In RAM mode that is the allocated buffer
+// (a whole piece from the first written byte), not the bytes received; Size stays the logical
+// downloaded size used for progress reporting. Disk pieces cost their file size.
+func (p *Piece) memCost() int64 {
+	if p.mPiece != nil {
+		return p.mPiece.allocated()
+	}
+	return p.Size
+}
+
 func (p *Piece) MarkComplete() error {
 	// Same lock the writers hold: the eviction worker reads Complete while a
 	// download may be marking pieces complete, and reading it unlocked is a data
@@ -120,7 +130,13 @@ func (p *Piece) Release() {
 	// Torrent may be nil during init/teardown or in tests — never panic here.
 	// (Aug 29 panics: nil pointer via cache.go during stream.)
 	if p.cache != nil && p.cache.torrent != nil {
-		p.cache.torrent.Piece(p.Id).SetPriority(torrent.PiecePriorityNone)
-		p.cache.torrent.Piece(p.Id).UpdateCompletion()
+		tp := p.cache.torrent.Piece(p.Id)
+		// The storage just dropped these bytes, but the client may still count
+		// the piece's chunks as received and serve zeros to a re-reading viewer.
+		// Re-pend them before telling the client the piece is not complete
+		// (YouROK/TorrServer#925).
+		tp.InvalidateStorage()
+		tp.SetPriority(torrent.PiecePriorityNone)
+		tp.UpdateCompletion()
 	}
 }

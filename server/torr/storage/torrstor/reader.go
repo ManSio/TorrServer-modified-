@@ -1,6 +1,7 @@
 package torrstor
 
 import (
+	"context"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -30,6 +31,8 @@ type Reader struct {
 	// checkReader mistakes a busy reader for an abandoned one and
 	// readerOff seeks it to 0 mid-read (upstream PR #876 port).
 	inFlight int
+	// ctx cancels a read waiting for a piece after the client disconnects.
+	ctx context.Context
 	// Debug telemetry. Atomic: read from /stat while the stream goroutine
 	// writes them, so no reader mutex is involved.
 	readCalls atomic.Uint64
@@ -44,11 +47,20 @@ func newReader(file *torrent.File, cache *Cache) *Reader {
 	r.SetReadahead(0)
 	r.cache = cache
 	r.isUse = true
+	r.ctx = context.Background()
 
 	cache.muReaders.Lock()
 	cache.readers[r] = struct{}{}
 	cache.muReaders.Unlock()
 	return r
+}
+
+// SetContext sets the context that cancels a read waiting for a piece.
+// Call it before the first read.
+func (r *Reader) SetContext(ctx context.Context) {
+	if ctx != nil {
+		r.ctx = ctx
+	}
 }
 
 func (r *Reader) Seek(offset int64, whence int) (n int64, err error) {
@@ -71,8 +83,10 @@ func (r *Reader) Seek(offset int64, whence int) (n int64, err error) {
 	r.lastAccess = time.Now().Unix()
 	// Priorities are recomputed here instead of waiting for the 5 s watchdog:
 	// right after a seek the client would otherwise keep requesting pieces
-	// around the old position while the viewer waits on a hole.
-	go r.cache.getRemPieces()
+	// around the old position while the viewer waits on a hole. The request is
+	// coalesced by the cache's pass worker, not spawned as a goroutine per seek
+	// (#968: scrubbing used to run dozens of full passes a minute).
+	r.cache.requestPass()
 	return
 }
 
@@ -84,7 +98,11 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 	if r.file.Torrent() != nil && r.file.Torrent().Info() != nil {
 		r.readerOn()
 		r.beginIO()
-		n, err = r.Reader.Read(p)
+		ctx := r.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		n, err = r.Reader.ReadContext(ctx, p)
 		r.endIO()
 		r.readCalls.Add(1)
 		r.readBytes.Add(uint64(max(n, 0)))
@@ -154,7 +172,7 @@ func (r *Reader) Close() {
 	if len(r.file.Torrent().Files()) > 0 {
 		r.Reader.Close()
 	}
-	go r.cache.getRemPieces()
+	r.cache.requestPass()
 }
 
 func (r *Reader) getPiecesRange() Range {

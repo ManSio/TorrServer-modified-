@@ -98,6 +98,9 @@ func (t *Torrent) Stream(fileID int, req *http.Request, resp http.ResponseWriter
 	}
 	// Ensure reader is always closed
 	defer t.CloseReader(reader)
+	// ServeContent only notices a gone client on write; a read waiting for a
+	// piece never gets there. Cancel it from the request context.
+	reader.SetContext(req.Context())
 
 	if sets.BTsets.ResponsiveMode {
 		reader.SetResponsive()

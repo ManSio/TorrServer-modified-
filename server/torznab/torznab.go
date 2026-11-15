@@ -62,6 +62,9 @@ func httpGet(u string) (*http.Response, error) {
 // end up as "/api/api".
 func buildAPIURL(host string) (*url.URL, error) {
 	host = strings.TrimSpace(host)
+	if !strings.HasPrefix(host, "http://") && !strings.HasPrefix(host, "https://") {
+		host = "http://" + host
+	}
 	host = strings.TrimRight(host, "/")
 	host = strings.TrimSuffix(host, "/api")
 	host = strings.TrimRight(host, "/")
@@ -170,10 +173,6 @@ func searchOne(host, key, query string) []*models.TorrentDetails {
 }
 
 func Test(host, key string) error {
-	if !strings.HasPrefix(host, "http://") && !strings.HasPrefix(host, "https://") {
-		host = "http://" + host
-	}
-
 	u, err := buildAPIURL(host)
 	if err != nil {
 		return err
@@ -242,7 +241,7 @@ func formatSize(bytes int64) string {
 		div *= unit
 		exp++
 	}
-	return fmt.Sprintf("%.1f %cCiB", float64(bytes)/float64(div), "KMGTPE"[exp])
+	return fmt.Sprintf("%.1f %ciB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
 func extractHash(magnet string) string {

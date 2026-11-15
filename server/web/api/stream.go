@@ -19,6 +19,16 @@ import (
 	"github.com/pkg/errors"
 )
 
+// unescapeQuery decodes a query value once more, as /stream and the search
+// handlers always have. A value whose "%" is not an escape, such as a title
+// "100% Pure", is kept as it is instead of becoming empty.
+func unescapeQuery(value string) string {
+	if unescaped, err := url.QueryUnescape(value); err == nil {
+		return unescaped
+	}
+	return value
+}
+
 // get stat
 // http://127.0.0.1:8090/stream/fname?link=...&stat
 // get m3u
@@ -95,10 +105,10 @@ func stream(c *gin.Context) {
 		return
 	}
 
-	link, _ = url.QueryUnescape(link)
-	title, _ = url.QueryUnescape(title)
-	poster, _ = url.QueryUnescape(poster)
-	category, _ = url.QueryUnescape(category)
+	link = unescapeQuery(link)
+	title = unescapeQuery(title)
+	poster = unescapeQuery(poster)
+	category = unescapeQuery(category)
 
 	var spec *torrent.TorrentSpec
 	var torrsHash *torrshash.TorrsHash
@@ -216,10 +226,10 @@ func streamNoAuth(c *gin.Context) {
 		return
 	}
 
-	link, _ = url.QueryUnescape(link)
-	title, _ = url.QueryUnescape(title)
-	poster, _ = url.QueryUnescape(poster)
-	category, _ = url.QueryUnescape(category)
+	link = unescapeQuery(link)
+	title = unescapeQuery(title)
+	poster = unescapeQuery(poster)
+	category = unescapeQuery(category)
 
 	var spec *torrent.TorrentSpec
 	var torrsHash *torrshash.TorrsHash
