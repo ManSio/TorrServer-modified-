@@ -54,6 +54,25 @@ type Cache struct {
 	// freshly created reader has already set.
 	muPrio  sync.Mutex
 	torrent *torrent.Torrent
+
+	// prioritized holds the pieces this cache raised above PiecePriorityNone,
+	// guarded by muPrio. clearPriority walks only this set: on a 92 245 piece
+	// remux, walking every piece and asking the client for its state cost
+	// 88 ms of client-lock calls per pass (measured 2026-11-15), while only a
+	// few thousand pieces are ever raised (issue #968).
+	prioritized map[int]struct{}
+
+	// Pass coalescing, one worker per cache: a seek used to spawn a full pass,
+	// so scrubbing ran dozens of passes a minute, each taking the client lock
+	// per piece. Requests are collapsed into at most one pass per passInterval,
+	// and the worker always reads the latest reader positions.
+	passCh       chan struct{}
+	passInterval time.Duration
+	closeCh      chan struct{}
+	closeOnce    sync.Once
+	lastPassAt   atomic.Int64 // UnixNano of the last pass start
+	passesRun    atomic.Int64 // passes actually executed (tests/diagnostics)
+	prioScanned  atomic.Int64 // pieces visited by the last clearPriority
 }
 
 func NewCache(capacity int64, storage *Storage) *Cache {
@@ -65,6 +84,10 @@ func NewCache(capacity int64, storage *Storage) *Cache {
 		readers:      make(map[*Reader]struct{}),
 		evictionList: list.New(),
 		evictChan:    make(chan string, 4096), // Buffer to avoid blocking producers
+		prioritized:  make(map[int]struct{}),
+		passCh:       make(chan struct{}, 1),
+		passInterval: defaultPassInterval,
+		closeCh:      make(chan struct{}),
 	}
 
 	return ret
@@ -92,9 +115,60 @@ func (c *Cache) Init(info *metainfo.Info, hash metainfo.Hash) {
 		c.pieces[i] = NewPiece(i, c)
 	}
 
-	c.storage.wg.Add(2)
+	c.storage.wg.Add(3)
 	go c.evictionWorker()
 	go c.priorityWatchdog()
+	go c.passWorker()
+}
+
+// defaultPassInterval bounds how often one cache recomputes priorities and
+// eviction candidates. A pass is O(pieces raised) plus one O(pieces) map walk
+// for the eviction fill, so the bound is about client-lock traffic and CPU
+// during scrubbing. The first request after an idle period runs immediately.
+const defaultPassInterval = 150 * time.Millisecond
+
+// requestPass asks the worker for a pass without spawning a goroutine per seek.
+// Requests collapse: if one is already queued, the worker will read the reader
+// positions of the moment it runs, so the newest request is never lost.
+func (c *Cache) requestPass() {
+	if c == nil || c.passCh == nil {
+		return
+	}
+	select {
+	case c.passCh <- struct{}{}:
+	default:
+	}
+}
+
+// passWorker runs at most one pass per passInterval per cache.
+func (c *Cache) passWorker() {
+	defer c.storage.wg.Done()
+	for {
+		select {
+		case <-c.closeCh:
+			return
+		case <-c.storage.doneCh:
+			return
+		case <-c.passCh:
+		}
+		wait := c.passInterval - time.Since(time.Unix(0, c.lastPassAt.Load()))
+		if wait > 0 {
+			timer := time.NewTimer(wait)
+			select {
+			case <-c.closeCh:
+				timer.Stop()
+				return
+			case <-c.storage.doneCh:
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+		}
+		start := time.Now()
+		c.getRemPieces()
+		c.passesRun.Add(1)
+		c.lastPassAt.Store(start.UnixNano())
+	}
 }
 
 func (c *Cache) evictionWorker() {
@@ -209,7 +283,15 @@ func (c *Cache) SetTorrent(torr *torrent.Torrent) {
 	if c == nil {
 		return
 	}
+	// Same torrent means nothing changed for the raised set: WaitInfo calls this
+	// on every stream request, and wiping the set there left the priorities it
+	// had raised outside any further clearance.
+	c.muPrio.Lock()
+	if c.torrent != torr || c.prioritized == nil {
+		c.prioritized = make(map[int]struct{})
+	}
 	c.torrent = torr
+	c.muPrio.Unlock()
 }
 
 func (c *Cache) getPieces() map[int]*Piece {
@@ -242,6 +324,9 @@ func (c *Cache) Close() error {
 		log.TLogln("Close cache for:", c.hash)
 	}
 	c.isClosed.Store(true)
+	// Stop the pass worker: otherwise it outlives the cache and keeps the whole
+	// Cache (and its LRU list) reachable after the torrent is removed.
+	c.closeOnce.Do(func() { close(c.closeCh) })
 
 	// Hand this cache's bytes over to the orphan accounting BEFORE the cache
 	// leaves s.caches (files stay on disk unless RemoveCacheOnDrop).
@@ -269,6 +354,10 @@ func (c *Cache) Close() error {
 	c.muReaders.Lock()
 	c.readers = nil
 	c.muReaders.Unlock()
+
+	c.muPrio.Lock()
+	c.prioritized = make(map[int]struct{})
+	c.muPrio.Unlock()
 
 	c.muPieces.Lock()
 	c.pieces = nil
@@ -323,6 +412,11 @@ func (c *Cache) releaseOnClose() {
 }
 
 func (c *Cache) removePiece(piece *Piece) {
+	// Drop the id from the raised set first: a removed piece has no priority to
+	// clear, and clearPriority must not keep a stale entry (issue #968 leak guard).
+	c.muPrio.Lock()
+	delete(c.prioritized, piece.Id)
+	c.muPrio.Unlock()
 	if !c.isClosed.Load() {
 		// Release handles decrementing counters (both local and global)
 		piece.Release()
@@ -586,6 +680,13 @@ func (c *Cache) setLoadPriority(ranges []Range) {
 	}
 	c.muPrio.Lock()
 	defer c.muPrio.Unlock()
+	if c.torrent == nil {
+		return
+	}
+	if c.prioritized == nil {
+		// A Cache built as a struct literal in tests has no map yet.
+		c.prioritized = make(map[int]struct{})
+	}
 	for _, r := range readers {
 		if !r.isUse {
 			continue
@@ -609,16 +710,26 @@ func (c *Cache) setLoadPriority(ranges []Range) {
 				continue
 			}
 			if !pc.Complete {
-				if i == readerPos {
+				switch {
+				case i == readerPos:
 					c.torrent.Piece(i).SetPriority(torrent.PiecePriorityNow)
-				} else if i == readerPos+1 {
+					c.prioritized[i] = struct{}{}
+				case i == readerPos+1:
 					c.torrent.Piece(i).SetPriority(torrent.PiecePriorityNext)
-				} else if i > readerPos && i <= readerRAHPos {
+					c.prioritized[i] = struct{}{}
+				case i > readerPos && i <= readerRAHPos:
 					c.torrent.Piece(i).SetPriority(torrent.PiecePriorityReadahead)
-				} else if i > readerRAHPos && i <= readerRAHPos+5 && c.torrent.PieceState(i).Priority != torrent.PiecePriorityHigh {
-					c.torrent.Piece(i).SetPriority(torrent.PiecePriorityHigh)
-				} else if i > readerRAHPos+5 && c.torrent.PieceState(i).Priority != torrent.PiecePriorityNormal {
-					c.torrent.Piece(i).SetPriority(torrent.PiecePriorityNormal)
+					c.prioritized[i] = struct{}{}
+				case i > readerRAHPos && i <= readerRAHPos+5:
+					if c.torrent.PieceState(i).Priority != torrent.PiecePriorityHigh {
+						c.torrent.Piece(i).SetPriority(torrent.PiecePriorityHigh)
+						c.prioritized[i] = struct{}{}
+					}
+				default:
+					if c.torrent.PieceState(i).Priority != torrent.PiecePriorityNormal {
+						c.torrent.Piece(i).SetPriority(torrent.PiecePriorityNormal)
+						c.prioritized[i] = struct{}{}
+					}
 				}
 				limit++
 			}
@@ -654,6 +765,7 @@ func (c *Cache) setLoadPriority(ranges []Range) {
 				if !pc.Complete {
 					if c.torrent.PieceState(i).Priority != torrent.PiecePriorityNormal {
 						c.torrent.Piece(i).SetPriority(torrent.PiecePriorityNormal)
+						c.prioritized[i] = struct{}{}
 					}
 					limit++
 					freePieces--
@@ -752,7 +864,7 @@ func (c *Cache) CloseReader(r *Reader) {
 }
 
 func (c *Cache) clearPriority() {
-	if c.torrent == nil {
+	if c == nil {
 		return
 	}
 	// This used to sleep for a second before clearing priorities. A reader
@@ -761,6 +873,11 @@ func (c *Cache) clearPriority() {
 	// player. A mutex provides the same ordering without the race window.
 	c.muPrio.Lock()
 	defer c.muPrio.Unlock()
+	if c.torrent == nil || len(c.prioritized) == 0 {
+		// Nothing was raised since the last clear: no client calls at all.
+		c.prioScanned.Store(0)
+		return
+	}
 	ranges := make([]Range, 0)
 	for _, r := range c.readersSnapshot() {
 		r.checkReader()
@@ -770,19 +887,19 @@ func (c *Cache) clearPriority() {
 	}
 	ranges = mergeRange(ranges)
 
-	for id := range c.getPieces() {
-		if len(ranges) > 0 {
-			if !inRanges(ranges, id) {
-				if c.torrent.PieceState(id).Priority != torrent.PiecePriorityNone {
-					c.torrent.Piece(id).SetPriority(torrent.PiecePriorityNone)
-				}
-			}
-		} else {
-			if c.torrent.PieceState(id).Priority != torrent.PiecePriorityNone {
-				c.torrent.Piece(id).SetPriority(torrent.PiecePriorityNone)
-			}
+	scanned := int64(0)
+	for id := range c.prioritized {
+		scanned++
+		if len(ranges) > 0 && inRanges(ranges, id) {
+			continue // still inside a reader window: keep it raised
 		}
+		delete(c.prioritized, id)
+		if c.torrent == nil {
+			continue
+		}
+		c.torrent.Piece(id).SetPriority(torrent.PiecePriorityNone)
 	}
+	c.prioScanned.Store(scanned)
 }
 
 func (c *Cache) GetCapacity() int64 {

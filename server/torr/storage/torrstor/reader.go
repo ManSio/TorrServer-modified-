@@ -83,8 +83,10 @@ func (r *Reader) Seek(offset int64, whence int) (n int64, err error) {
 	r.lastAccess = time.Now().Unix()
 	// Priorities are recomputed here instead of waiting for the 5 s watchdog:
 	// right after a seek the client would otherwise keep requesting pieces
-	// around the old position while the viewer waits on a hole.
-	go r.cache.getRemPieces()
+	// around the old position while the viewer waits on a hole. The request is
+	// coalesced by the cache's pass worker, not spawned as a goroutine per seek
+	// (#968: scrubbing used to run dozens of full passes a minute).
+	r.cache.requestPass()
 	return
 }
 
@@ -170,7 +172,7 @@ func (r *Reader) Close() {
 	if len(r.file.Torrent().Files()) > 0 {
 		r.Reader.Close()
 	}
-	go r.cache.getRemPieces()
+	r.cache.requestPass()
 }
 
 func (r *Reader) getPiecesRange() Range {
