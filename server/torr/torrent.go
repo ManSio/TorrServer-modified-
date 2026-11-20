@@ -177,9 +177,9 @@ func (t *Torrent) WaitInfo() bool {
 			t.TorrentSpec.InfoBytes = torrent.Metainfo().InfoBytes
 		}
 		// bt.storage is replaced by Connect() under bt.mu; read it under the lock
-		// and use the snapshot afterwards, because the storage object keeps its own
-		// locking and is never closed. Reading the field unlocked was flagged by the
-		// race detector and can hand SetTorrent a torn interface value.
+		// and use the snapshot afterwards. The storage keeps its own locking, and
+		// Disconnect may close it, so every use below tolerates a closed storage
+		// (GetCache returns nil) instead of assuming it lives forever.
 		if t.bt != nil {
 			t.bt.mu.RLock()
 			storage := t.bt.storage

@@ -275,40 +275,11 @@ func SetSettings(set *sets.BTSets) {
 	log.TLogln("disconect")
 	bts.Disconnect()
 	log.TLogln("connect")
-	reconnect()
+	if err := bts.Connect(); err != nil {
+		log.TLogln("connect failed:", err)
+	}
 	time.Sleep(time.Second * 1)
 	log.TLogln("end set settings")
-}
-
-// reconnect retries Connect after Disconnect. The uTP socket of the closed client
-// closes lazily, only after its peer connections are gone, and until then
-// PeersListenPort stays busy ("listen udp4 :port: bind: address already in use").
-// A failed Connect would leave bts.client nil until restart, and every /stat
-// would then report a missing client instead of a working one.
-func reconnect() {
-	_ = retryConnect(30, time.Second, bts.Connect)
-}
-
-// retryConnect holds the retry policy in one testable place: it returns nil as
-// soon as connect succeeds, otherwise the last error after attempts tries.
-func retryConnect(attempts int, pause time.Duration, connect func() error) error {
-	var err error
-	for i := 0; i < attempts; i++ {
-		if err = connect(); err == nil {
-			if i > 0 {
-				log.TLogln("connect ok, attempt", i+1)
-			}
-			return nil
-		}
-		if i == 0 {
-			log.TLogln("connect error, retrying:", err)
-		}
-		if i < attempts-1 {
-			time.Sleep(pause)
-		}
-	}
-	log.TLogln("connect failed:", err)
-	return err
 }
 
 func SetDefSettings() {
@@ -324,7 +295,9 @@ func SetDefSettings() {
 	log.TLogln("disconect")
 	bts.Disconnect()
 	log.TLogln("connect")
-	reconnect()
+	if err := bts.Connect(); err != nil {
+		log.TLogln("connect failed:", err)
+	}
 	time.Sleep(time.Second * 1)
 	log.TLogln("end set default settings")
 }
