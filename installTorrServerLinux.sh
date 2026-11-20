@@ -769,13 +769,20 @@ selectReleaseTag() {
   head -n1
 }
 
-getLatestRelease() {  # releases/latest points at whatever was published last, and that is now
+getLatestRelease() {
+  # releases/latest points at whatever was published last, and that is now
   # another engine (Silo.*) whose binary accepts only "-c config.yaml", while
   # this script writes the MatriX CLI flags. Installing that binary leaves the
   # service restart-looping with "flag provided but not defined: -port"
   # (YouROK/TorrServer#977). So pick the newest release of our own channel.
-  curl -s --connect-timeout 10 --max-time 30 "${REPO_API_URL}/releases?per_page=30" |
-  selectReleaseTag
+  #
+  # Both the fetch and the filter may legitimately fail (no network, no release
+  # of our channel yet). They must not abort the script under `set -e`: an empty
+  # answer is handled by getTargetVersion, which prints a message and exits.
+  local tag
+  tag=$(curl -s --connect-timeout 10 --max-time 30 "${REPO_API_URL}/releases?per_page=30" |
+    selectReleaseTag || true)
+  printf '%s\n' "$tag"
 }
 
 getSpecificRelease() {
@@ -783,9 +790,12 @@ getSpecificRelease() {
   local tag_name
   tag_name=$(getVersionTag "$version")
   local response
-  response=$(curl -s --connect-timeout 10 --max-time 30 "${REPO_API_URL}/releases/tags/$tag_name")
+  response=$(curl -s --connect-timeout 10 --max-time 30 "${REPO_API_URL}/releases/tags/$tag_name" || true)
 
-  if echo "$response" | grep -q '"tag_name"'; then
+  # Here-string, not `echo | grep -q`: grep exits on the first match, echo then
+  # takes SIGPIPE, and pipefail reports the pipeline as failed for a release
+  # that exists (YouROK/TorrServer#978).
+  if grep -q '"tag_name"' <<<"$response"; then
     echo "$tag_name"
   else
     echo ""

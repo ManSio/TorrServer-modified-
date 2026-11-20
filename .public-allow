@@ -1,0 +1,18 @@
+# Allowlist for scripts/check_public_terms.sh (one extended regex per line,
+# matched against "path:line:text"). Comments and blank lines are ignored.
+#
+# Only for address literals that are part of the product, not someone's
+# infrastructure: protocol blocklists, defaults, and test fixtures. Anything
+# else belongs in local files or must be replaced with "local server" /
+# "pub server" / an RFC 5737 example.
+
+# Private ranges the client must refuse as peers.
+^server/torr/btserver\.go:.*(10\.0\.0\.0|172\.16\.0\.0|192\.168\.0\.0|169\.254\.0\.0|fe80::)
+
+# Default resolvers shipped with the server.
+^server/cmd/main\.go:.*(64\.6\.64\.6|8\.8\.8\.8|8\.8\.4\.4)
+
+# Test fixtures.
+^server/cmd/main_test\.go:
+^server/cmd/dns_cache_test\.go:
+^server/tgbot/utils\.go:.*192\.168\.1\.1

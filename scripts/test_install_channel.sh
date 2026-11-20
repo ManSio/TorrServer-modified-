@@ -60,6 +60,47 @@ check "api error body" \
   '{"message":"API rate limit exceeded"}' \
   ""
 
+# An empty channel must produce the message and a clean exit, not a silent
+# `set -e` abort: the release list pipeline legitimately fails when no tag of
+# our channel exists (that is the whole point of the filter).
+run_empty_channel_case() {
+  local script="$1" tmp rc out
+  tmp=$(mktemp -d)
+  cat >"$tmp/harness.sh" <<'HARNESS'
+set -euo pipefail
+VERSION_PREFIX=MatriX
+REPO_URL=https://example.invalid
+REPO_API_URL=https://example.invalid
+specificVersion=""
+colorize() { shift; printf '%s' "$*"; }
+msg() { printf '%s\n' "$1"; }
+curl() { printf '%s' '[]'; }
+script="$1"
+eval "$(sed -n '/^selectReleaseTag()/,/^}/p' "$script")"
+eval "$(sed -n '/^getLatestRelease()/,/^}/p' "$script")"
+eval "$(sed -n '/^getTargetVersion()/,/^}/p' "$script")"
+getTargetVersion
+HARNESS
+  out=$(bash "$tmp/harness.sh" "$script" 2>&1)
+  rc=$?
+  rm -rf "$tmp"
+  if [ "$rc" -ne 1 ]; then
+    echo "FAIL empty channel: rc=$rc, want 1 (out='$out')"
+    return 1
+  fi
+  case "$out" in
+    *version_not_found* | *"not found"*)
+      echo "ok   empty channel: message and rc=1"
+      ;;
+    *)
+      echo "FAIL empty channel: exited without the message (out='$out')"
+      return 1
+      ;;
+  esac
+}
+
+run_empty_channel_case "$script" || fail=1
+
 if [[ $fail -ne 0 ]]; then
   echo "FAILED" >&2
   exit 1

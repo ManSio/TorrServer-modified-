@@ -20,17 +20,24 @@ type Piece struct {
 	mPiece *MemPiece  `json:"-"`
 	dPiece *DiskPiece `json:"-"`
 
+	// useDisk is the backend chosen for this piece at creation. It is a field,
+	// not settings.BTsets.UseDisk: the setting can change while the piece is
+	// alive (SetSettings switches it before dropping torrents), and WriteAt,
+	// ReadAt, Release and the state lock must keep using the same backend.
+	useDisk bool `json:"-"`
+
 	cache        *Cache        `json:"-"`
 	evictionElem *list.Element `json:"-"`
 }
 
 func NewPiece(id int, cache *Cache) *Piece {
 	p := &Piece{
-		Id:    id,
-		cache: cache,
+		Id:      id,
+		cache:   cache,
+		useDisk: settings.BTsets != nil && settings.BTsets.UseDisk,
 	}
 
-	if !settings.BTsets.UseDisk {
+	if !p.useDisk {
 		p.mPiece = NewMemPiece(p)
 	} else {
 		p.dPiece = NewDiskPiece(p)
@@ -38,27 +45,30 @@ func NewPiece(id int, cache *Cache) *Piece {
 	return p
 }
 
+// WriteAt, ReadAt and Release use the backend this piece was created with, not
+// the live UseDisk setting. SetSettings replaces BTsets first and drops the
+// torrents after; in between the engine keeps writing and reading the pieces
+// that already exist, and the other backend is nil there — the resulting panic
+// in the engine goroutine took the whole server down (upstream 9eb0f9f7).
 func (p *Piece) WriteAt(b []byte, off int64) (n int, err error) {
-	if !settings.BTsets.UseDisk {
-		return p.mPiece.WriteAt(b, off)
-	} else {
+	if p.useDisk {
 		return p.dPiece.WriteAt(b, off)
 	}
+	return p.mPiece.WriteAt(b, off)
 }
 
 func (p *Piece) ReadAt(b []byte, off int64) (n int, err error) {
-	if !settings.BTsets.UseDisk {
-		return p.mPiece.ReadAt(b, off)
-	} else {
+	if p.useDisk {
 		return p.dPiece.ReadAt(b, off)
 	}
+	return p.mPiece.ReadAt(b, off)
 }
 
 // memCost is what this piece costs the cache budget. In RAM mode that is the allocated buffer
 // (a whole piece from the first written byte), not the bytes received; Size stays the logical
 // downloaded size used for progress reporting. Disk pieces cost their file size.
 func (p *Piece) memCost() int64 {
-	if p.mPiece != nil {
+	if !p.useDisk && p.mPiece != nil {
 		return p.mPiece.allocated()
 	}
 	return p.Size
@@ -88,7 +98,7 @@ func (p *Piece) MarkNotComplete() error {
 // or MemPiece), which is the lock every writer already takes.
 func (p *Piece) lockState() {
 	switch {
-	case p.dPiece != nil:
+	case p.useDisk && p.dPiece != nil:
 		p.dPiece.mu.Lock()
 	case p.mPiece != nil:
 		p.mPiece.mu.Lock()
@@ -97,7 +107,7 @@ func (p *Piece) lockState() {
 
 func (p *Piece) unlockState() {
 	switch {
-	case p.dPiece != nil:
+	case p.useDisk && p.dPiece != nil:
 		p.dPiece.mu.Unlock()
 	case p.mPiece != nil:
 		p.mPiece.mu.Unlock()
@@ -122,10 +132,13 @@ func (p *Piece) Completion() storage.Completion {
 }
 
 func (p *Piece) Release() {
-	if !settings.BTsets.UseDisk {
+	// Same rule as WriteAt/ReadAt: the backend the piece was created with.
+	if p.useDisk {
+		if p.dPiece != nil {
+			p.dPiece.Release()
+		}
+	} else if p.mPiece != nil {
 		p.mPiece.Release()
-	} else {
-		p.dPiece.Release()
 	}
 	// Torrent may be nil during init/teardown or in tests — never panic here.
 	// (Aug 29 panics: nil pointer via cache.go during stream.)
