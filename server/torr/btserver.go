@@ -31,6 +31,10 @@ type BTServer struct {
 	torrents map[metainfo.Hash]*Torrent
 
 	mu sync.RWMutex
+	// connectMu serializes Connect/Disconnect, which sleep while the old uTP
+	// socket is released. It is separate from mu so that readers (/stat,
+	// /torrents, streams) never wait for that sleep (KI-020).
+	connectMu sync.Mutex
 }
 
 var privateIPBlocks []*net.IPNet
@@ -63,25 +67,109 @@ func NewBTS() *BTServer {
 func (bt *BTServer) Connect() error {
 	utils.PrefetchTrackers()
 
+	// connectMu, not bt.mu: the retry sleeps for as long as the old uTP socket is
+	// released (up to connectAttempts*connectPause), and holding bt.mu through
+	// that blocked every /stat, /torrents and stream request (KI-020).
+	bt.connectMu.Lock()
+	defer bt.connectMu.Unlock()
+
+	bt.mu.Lock()
+	// Idempotent: a second Connect (two settings saves racing, a manual retry)
+	// must not overwrite a live client and abandon its storage.
+	if bt.client != nil {
+		bt.client.Close()
+		bt.client = nil
+	}
+	bt.closeStorageLocked()
+	// configure() builds the config AND creates the storage, which starts a
+	// worker and a full cache scan. It runs once per Connect: retrying it per
+	// attempt created and abandoned a storage each time (KI-020: 12 scans in the
+	// 16 s reconnect window on prod).
+	bt.configure()
+	cfg := bt.config
+	bt.mu.Unlock()
+
+	client, err := retryClient(connectAttempts, connectPause, func() (*torrent.Client, error) {
+		return torrent.NewClient(cfg)
+	})
+
 	bt.mu.Lock()
 	defer bt.mu.Unlock()
-	var err error
-	bt.configure()
-	bt.client, err = torrent.NewClient(bt.config)
+	if err != nil {
+		// Nothing will use this storage: stop its worker instead of leaving it
+		// behind for the process lifetime.
+		bt.closeStorageLocked()
+		return err
+	}
+	bt.client = client
 	bt.torrents = make(map[metainfo.Hash]*Torrent)
 	InitApiHelper(bt)
 
-	return err
+	return nil
+}
+
+// connectAttempts and connectPause bound the client-creation retry. The uTP
+// socket of a closed client is released lazily, only after its peers are gone,
+// and until then PeersListenPort is busy. On prod the release took ~13 s, and
+// the old 1 s pause rounded that up further; 250 ms polling finds the free
+// moment without the quantisation (KI-020).
+var (
+	connectAttempts = 60
+	connectPause    = 250 * time.Millisecond
+)
+
+// retryClient holds the retry policy in one testable place: it returns the
+// client as soon as creation succeeds, otherwise the last error after attempts.
+func retryClient(attempts int, pause time.Duration, newClient func() (*torrent.Client, error)) (*torrent.Client, error) {
+	var err error
+	for i := 0; i < attempts; i++ {
+		var c *torrent.Client
+		c, err = newClient()
+		if err == nil {
+			if i > 0 {
+				log.Println("connect ok, attempt", i+1)
+			}
+			return c, nil
+		}
+		if i == 0 {
+			log.Println("connect error, retrying:", err)
+		}
+		if i < attempts-1 {
+			time.Sleep(pause)
+		}
+	}
+	log.Println("connect failed:", err)
+	return nil, err
+}
+
+// closeStorageLocked stops the storage's worker and drops the reference.
+// Callers hold bt.mu.
+func (bt *BTServer) closeStorageLocked() {
+	if bt.storage != nil {
+		_ = bt.storage.Close()
+		bt.storage = nil
+	}
 }
 
 func (bt *BTServer) Disconnect() {
+	// Same lock as Connect: a save must not close the storage a Connect is
+	// building, and the caller order in SetSettings is Disconnect -> Connect.
+	bt.connectMu.Lock()
+	defer bt.connectMu.Unlock()
+
 	bt.mu.Lock()
 	defer bt.mu.Unlock()
 	if bt.client != nil {
 		bt.client.Close()
 		bt.client = nil
-		utils.FreeOSMemGC()
 	}
+	// The storage owns a background worker, its counters and the piece file
+	// pool. Leaving it behind leaked one goroutine and one periodic cache scan
+	// per settings save (KI-020: goroutines 4 -> 5 -> 6 for three saves).
+	// Callers on the settings path drop the torrents first, so nothing reads
+	// these caches any more; Shutdown exits right after.
+	bt.closeStorageLocked()
+	utils.FreeOSMemGC()
 }
 
 // publicIPTimeout bounds the public address lookups. Without it Connect blocked
