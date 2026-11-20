@@ -40,6 +40,15 @@ type Reader struct {
 }
 
 func newReader(file *torrent.File, cache *Cache) *Reader {
+	if cache == nil {
+		return nil
+	}
+	// A stream request can arrive while the cache is closing: a torrent closed by
+	// timeout nils the reader map, and writing into that nil map panicked the
+	// request (recovered by gin, the viewer got a 500 — prod log 2026-11-20).
+	if cache.isClosed.Load() {
+		return nil
+	}
 	r := new(Reader)
 	r.file = file
 	r.Reader = file.NewReader()
@@ -50,6 +59,11 @@ func newReader(file *torrent.File, cache *Cache) *Reader {
 	r.ctx = context.Background()
 
 	cache.muReaders.Lock()
+	if cache.readers == nil {
+		cache.muReaders.Unlock()
+		r.Reader.Close() // the cache closed between the check above and here
+		return nil
+	}
 	cache.readers[r] = struct{}{}
 	cache.muReaders.Unlock()
 	return r
