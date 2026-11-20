@@ -18,7 +18,7 @@
 (KI-003, `storage.go:836`). `ReadAt`/`Release` по-прежнему под `p.mu.Lock()` (`diskpiece.go:82`, `:112`),
 поэтому статус P0 остаётся открытым; предложенный в записи фикс устарел.
 
-## KI-003: Лимит кеша не применялся к данным удалённых из памяти торрентов (2026-10-01) — FIXED и РАЗВЁРНУТО на 192.168.2.6
+## KI-003: Лимит кеша не применялся к данным удалённых из памяти торрентов (2026-10-01) — FIXED и РАЗВЁРНУТО на local server
 **Status:** 🟢 Развёрнуто 2026-10-01 18:44 UTC, подтверждено на прод-данных
 **Files:** `torrstor/storage.go` (orphanBytes, reconcileOrphans, evictOrphanDirs, evictPiecesTo),
 `torrstor/cache.go` (releaseOnClose), `torrstor/reader.go` (getOffsetRange),
@@ -139,7 +139,7 @@ PASS. Deadlock-проба чувствительна к таймингу под 
 замере. Коммиты `aaed3654` + `f516a84b` локальны, **прод-бинарь не обновлён** (3aa5ccef).
 
 ## KI-007: Бэкпорт трёх апстрим-фиксов — preload nil, stream 404/503, torznab URL+UA (2026-10-17) — РАЗВЁРНУТО
-**Status:** 🟢 Развёрнуто на 192.168.2.6 2026-10-17 11:36 +03 (sha `02d3cbb3…`; бэкап
+**Status:** 🟢 Развёрнуто на local server 2026-10-17 11:36 +03 (sha `02d3cbb3…`; бэкап
 `/opt/torrserver/TorrServer.bak-20261017-113616` = прежний `bf88f13c…`; сервис `active`, `/stat` 200, `journalctl -p err` пусто)
 **Files:** `torr/preload.go`, `torr/stream.go`, `torznab/torznab.go` + тесты
 **1. Preload vs drop (апстрим `c3a0642e`, issue #916):** `drop()` обнуляет `t.Torrent`, оставляя
@@ -162,7 +162,7 @@ torznab UA подтверждён: old = `Go-http-client/1.1`, path `/api/api`; 
 `rutor.ls`, которого нет в репозитории (фикстура не трекается).
 
 ## KI-008: Холодный старт DHT — первый announce новой раздачи на пустой таблице ждёт 5 мин (issue #922) (2026-10-17)
-**Status:** 🟢 Развёрнуто на 192.168.2.6 2026-10-17 14:07 +03 (sha `550ea84b…`, база движка v1.2.32; бэкап
+**Status:** 🟢 Развёрнуто на local server 2026-10-17 14:07 +03 (sha `550ea84b…`, база движка v1.2.32; бэкап
 `/opt/torrserver/TorrServer.bak-20261017-140710` = прежний `91d925fa…` (v1.2.29-база); сервис `active`,
 `/stat` 200, `journalctl -p err` пусто, 0 panic; откат: `sudo mv TorrServer.bak-20261017-140710 TorrServer && sudo systemctl restart torrserver`)
 **Source:** https://github.com/YouROK/TorrServer/issues/922 — наш комментарий (`#issuecomment-6232150358`)
@@ -228,7 +228,7 @@ active, `/stat` 200, 0 ошибок/0 panic после старта. Бэкап:
 `BUG NOT REPRODUCED` после тега `v1.2.32-mansio.2` + вызова в `Release`.
 **Timeline:** T+0 — запись создана по факту проверки; T+30d — вынести фикс в тег и `go.mod`;
 T+180d — снять replace после мерджа PR #11.
-**Прод-проверка 2026-10-24 (read-only, 192.168.2.6):** бинарь `sha256 550ea84b…`, `vcs.revision=bc427f28`,
+**Прод-проверка 2026-10-24 (read-only, local server):** бинарь `sha256 550ea84b…`, `vcs.revision=bc427f28`,
 `vcs.modified=true`, go1.27.0; `grep -a -c InvalidateStorage` = **0** → #925 отсутствует и в проде.
 Сервис active с 2026-10-17 14:07, 0 рестартов, `/stat` 200, ошибок за 48 ч нет.
 
@@ -351,7 +351,7 @@ Guard: `Storage.WaitInitialScan()`; `newIdleStorage` ждёт первый ск�
   вместе с кэшем. `-race` по-прежнему ⏳: нет cgo/gcc.
 - `#974` (PR open) «require credentials on public media routes» — политика, не баг: наши
   `/stream`, `/play`, `/gst` открыты намеренно (`web/api/route.go:29-43`), auth на проде выключен.
-**Живой 192.168.2.6:** MatriX.144, uptime 6d13h; Cache 111.1 / 146.7 GiB (75.7 %, всё на диске,
+**Живой local server:** MatriX.144, uptime 6d13h; Cache 111.1 / 146.7 GiB (75.7 %, всё на диске,
 in-memory 0 B); VmRSS 60 MB, RssAnon 47 MB, HWM 193 MB, swap 0 — 1.34 GB в cgroup это page cache,
 не утечка; panic/OOM в journal и `server.log` нет.
 
@@ -375,3 +375,25 @@ TestStagedBytes, TestWatchedFileEndBytes), все одного класса:
 правка + тесты (M/L).
 **Проверено, что чисто:** `-race` на `./torr` (6.2 s), `./web/api` (1.3 s), `./settings` (1.1 s)
 и на 8 тестах изменённого кэша ×3 — отчётов нет.
+
+## KI-018: личные файлы ушли в публичную ветку (2026-11-15) — 🟠 процесс, остаток принят владельцем
+**Status:** 🟠 устранено частично; владелец решил оставить остаточный след (2026-11-15).
+**Что случилось:** публикуя 50 коммитов в публичный форк, я считал секрет-скан (0 ключей/токенов)
+достаточным разрешением. В ветку ушли `AGENT_DIARY.md`, `EXPERIMENTS_LOG.md`, `docs/`, `experiments/`,
+`scripts/torrserver-auth.sh` — внутренние адреса (`local server`, `pub server`), модели техники,
+бытовые заметки. Кредов в них нет (проверено grep'ом и разбором блоба).
+**Нарушено:** §4 (внешняя публикация и данные владельца — отдельный гейт), §0 (приоритет
+«безопасность > данные владельца»), §2 (перед необратимым внешним действием нужен Red Team по
+поверхности «что именно уходит наружу»).
+**Корень:** вопрос «можно ли это публиковать» подменён вопросом «нет ли здесь пароля»; названный
+в ответе риск не превращён в проверку.
+**Устранено:** PR #1 закрыт, ветка удалена; ветка пересобрана через `filter-branch` без личных путей
+(37 коммитов, изменения — только удаления 1888 строк, код не тронут), открыт PR #2; личные файлы
+в бэкапе `%USERPROFILE%\TorrServer-local-docs-backup-20261115`.
+**Остаточный след:** блоб дневника доступен по старому коммиту `0d6d178e` (закрытый PR #1 держит
+head-ref; GitHub не удаляет PR). Владелец решил не переводить репозиторий в private и не писать в
+Support — принятый риск, ссылка не находится из UI/поиска.
+**Guard:** локальный `.git/hooks/pre-push` отказывает в пуше коммитов с личными путями
+(`AGENT_DIARY.md|EXPERIMENTS_LOG.md|docs/|experiments/|scripts/torrserver-auth.sh`), проверено
+dry-run'ом; обход только осознанным `--no-verify`. Правило: перед публикацией перечислять
+публикуемые пути и классифицировать содержимое, а не только сканировать секреты.

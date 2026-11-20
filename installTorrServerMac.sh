@@ -624,8 +624,13 @@ getLatestRelease() {
   # Same as the Linux installer: /releases/latest may be another engine
   # (Silo.*) whose binary takes only "-c config.yaml", while this script writes
   # the MatriX CLI flags (YouROK/TorrServer#977).
-  curl -s --connect-timeout 10 --max-time 30 "${REPO_API_URL}/releases?per_page=30" |
-  selectReleaseTag
+  #
+  # A failed fetch or an empty channel must not abort the script under `set -e`;
+  # getTargetVersion turns an empty answer into a message.
+  local tag
+  tag=$(curl -s --connect-timeout 10 --max-time 30 "${REPO_API_URL}/releases?per_page=30" |
+    selectReleaseTag || true)
+  printf '%s\n' "$tag"
 }
 
 getSpecificRelease() {
@@ -633,9 +638,11 @@ getSpecificRelease() {
   local tag_name
   tag_name=$(getVersionTag "$version")
   local response
-  response=$(curl -s "${REPO_API_URL}/releases/tags/$tag_name")
+  response=$(curl -s "${REPO_API_URL}/releases/tags/$tag_name" || true)
 
-  if echo "$response" | grep -q '"tag_name"'; then
+  # Here-string, not `echo | grep -q`: grep exits on the first match, echo then
+  # takes SIGPIPE, and pipefail fails a release that exists (#978).
+  if grep -q '"tag_name"' <<<"$response"; then
     echo "$tag_name"
   else
     echo ""
